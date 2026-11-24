@@ -185,13 +185,10 @@ fn spawn_login(
     // A phone screen is short: the title and the card give up the room they can spare, and the
     // card lays out its two halves side by side.
     let pick = |desk: f32, phone: f32| touchscreen.pick(desk, phone);
-    if *mode == LoginMode::Unset {
-        *mode = if preferences.get().nickname.is_some() {
-            LoginMode::SignIn
-        } else {
-            LoginMode::Guest
-        };
-    }
+    // Signing in and creating an account are the site's now: a player not signed in on this
+    // device always comes in as a guest, whatever name they once typed (the hidden sign-in tab,
+    // with no password to send, left QUICK PLAY doing nothing).
+    *mode = LoginMode::Guest;
     // The guest name of the run being played, or one the dice roll now.
     if let Connection::Online {
         nickname,
@@ -1056,7 +1053,7 @@ fn sign_out(
         network.new_device();
     }
     preferences.update(|preferences| preferences.account = None);
-    *mode = LoginMode::SignIn;
+    *mode = LoginMode::Guest;
 }
 
 fn reroll(
