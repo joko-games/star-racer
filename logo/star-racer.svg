@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Star Racer's logo (2026-11-24): the studio's ring (studio.svg), with a racing car seen from
+     the side inside it in the same neon, at the user's word ("Fais le logo de Star Racer, le même
+     cercle mais au milieu tu fais mets une voiture vue de coté"). The game's favicon, its page's
+     icons and the Windows program's icon; tools/icon renders them (docs/logo.md). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <g id="figure" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <!-- The car, nose to the right: a low body rising to the cockpit, a rear wing on its strut. -->
+      <path d="M 108 300 L 106 262 C 106 252 112 248 122 247 L 198 240 C 216 214 248 200 282 202
+               C 306 204 324 216 338 234 L 406 256 C 420 260 426 271 422 283 L 416 300 Z"/>
+      <path d="M 226 238 C 240 222 258 216 280 216 C 296 217 308 224 318 236 Z"/>
+      <path d="M 90 222 H 142 M 116 222 L 124 247"/>
+      <!-- Speed behind it. -->
+      <path d="M 40 262 H 78 M 54 286 H 84"/>
+    </g>
+    <g id="wheels" stroke-linecap="round">
+      <circle cx="166" cy="304" r="34"/>
+      <circle cx="356" cy="304" r="34"/>
+    </g>
+    <g id="hubs" fill="none">
+      <circle cx="166" cy="304" r="13"/>
+      <circle cx="356" cy="304" r="13"/>
+    </g>
+  </defs>
+
+  <!-- The disk. -->
+  <circle cx="256" cy="256" r="232" fill="#000000"/>
+
+  <!-- The ring: a glow, then two lines a hair apart, as the original's. -->
+  <g fill="none">
+    <circle cx="256" cy="256" r="238" stroke="#72fafc" stroke-width="30" filter="url(#glow)"
+            opacity="0.9"/>
+    <circle cx="255" cy="257" r="240" stroke="#72fafc" stroke-width="14"/>
+    <circle cx="257" cy="255" r="234" stroke="#62d6d8" stroke-width="16"/>
+  </g>
+
+  <!-- The figure, in the same neon; the wheels black inside, hiding the body's line behind them. -->
+  <use href="#figure" stroke="#72fafc" stroke-width="26" filter="url(#glow)" opacity="0.8"/>
+  <use href="#figure" stroke="#62d6d8" stroke-width="14"/>
+  <use href="#figure" stroke="#b8fdff" stroke-width="4"/>
+  <use href="#wheels" fill="#000000" stroke="#62d6d8" stroke-width="14"/>
+  <use href="#wheels" fill="none" stroke="#b8fdff" stroke-width="4"/>
+  <use href="#hubs" stroke="#62d6d8" stroke-width="8"/>
+</svg>

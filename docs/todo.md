@@ -44,6 +44,21 @@ the French will go through (`client/src/i18n.rs`, only QUICK PLAY translated yet
    user's word ("On fera les traductions une autre fois"); `client/src/i18n.rs` is ready for it,
    only QUICK PLAY translated.
 
+4. **The user's list of 2026-11-24**, after the site went up again (their words: "un installeur
+   moderne pour windows", "un auto updater", "Une icone sympa qui sera le premier logo du jeu, ce
+   sera la favicon et l'icone du raccourci/lanceur. Inspire toi de mon logo, le cercle bleu", "rend
+   le jeu plus mais beau, plus polygoné, ce sera la qualité "ultra", et en meme temps scale davantage,
+   avec plus de crans, et un "very low" qui est vraiment très simple geometriquement et tout, mais
+   toujours équitable et empechant la triche"):
+   - the logos, done in v1.0.0-rc5 (docs/logo.md): the studio's, the ring with a gamepad from
+     above, and the game's, the ring with a car from the side, which is the favicon and the
+     program's icon (not deployed yet: the site still shows the old favicon);
+   - a modern Windows installer;
+   - an auto-updater;
+   - a richer, more detailed ULTRA, more graphics levels, and a VERY LOW that is geometrically
+     very simple yet fair: the simulation, and what a player can see of the road and the other
+     cars, the same at every level, so no level gives an edge.
+
 Also waiting:
 
 - The small sound bug on the web, which the user is to describe.

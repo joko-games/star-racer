@@ -1,6 +1,6 @@
 [package]
 name = "star-racer-client"
-version = "1.0.0-rc4"
+version = "1.0.0-rc5"
 edition = "2024"
 license = "Unlicense"
 
@@ -78,6 +78,9 @@ tokio = { workspace = true, features = ["rt"] }
 # does its arithmetic: `ring`, which builds with the C compiler Rust already needs on Windows.
 # A browser does its own TLS, so none of this is in the web build.
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+# The window's icon (`window_icon.rs`): Bevy has no setting for it, so it is given to winit, the
+# version Bevy uses, adding none of its features.
+winit = { version = "0.30.13", default-features = false }
 tokio-tungstenite-wasm = { version = "0.9.0", features = ["rustls-tls-webpki-roots"] }
 
 # Web: settings from the page address, identity in local storage, networking on the page's event
@@ -102,3 +105,7 @@ web-sys = { version = "0.3.106", features = [
     "UrlSearchParams",
     "Window",
 ] }
+
+# The program's icon on Windows, the logo compiled into the executable (build.rs).
+[build-dependencies]
+winresource = "0.1"

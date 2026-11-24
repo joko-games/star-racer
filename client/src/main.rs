@@ -37,6 +37,8 @@ mod turbo_fx;
 mod ui;
 mod weight;
 mod world;
+#[cfg(not(target_arch = "wasm32"))]
+mod window_icon;
 
 use bevy::prelude::*;
 
@@ -152,6 +154,8 @@ fn main() {
         },
     ));
     app.add_plugins(turbo_fx::TurboFxPlugin);
+    #[cfg(not(target_arch = "wasm32"))]
+    app.add_plugins(window_icon::WindowIconPlugin);
 
     #[cfg(not(target_arch = "wasm32"))]
     if let Some((path, delay)) = settings.capture {

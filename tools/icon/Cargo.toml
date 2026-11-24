@@ -1,0 +1,17 @@
+# Renders the logo (client/assets/logo/logo.svg) to every icon the game ships: a tool run by hand
+# when the logo changes, never by a build, so it stays out of the workspace and its dependencies
+# out of the game's. Run from the repository's root:
+#
+#   cargo run --release --manifest-path tools/icon/Cargo.toml --target-dir target/tools
+[package]
+name = "star-racer-icon"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+resvg = "0.45"
+ico = "0.4"
+png = "0.17"
