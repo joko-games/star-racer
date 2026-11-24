@@ -20,6 +20,7 @@ use crate::car_model::{self, Livery, Nozzle};
 use crate::lobby::CurrentLobby;
 use crate::net::NetEvent;
 use crate::prediction::{Prediction, predict};
+use crate::quality::{Detail, Quality};
 use crate::screen::Screen;
 use crate::track::CurrentTrack;
 use crate::weight::{CarBody, Sway};
@@ -42,6 +43,7 @@ impl Plugin for RacePlugin {
             .init_resource::<RaceView>()
             .init_resource::<Spectated>()
             .add_systems(Startup, create_car_assets)
+            .add_systems(PreUpdate, follow_detail)
             .add_systems(OnExit(Screen::Lobby), forget_race)
             .add_systems(
                 Update,
@@ -122,7 +124,11 @@ struct ShownLook(CarLook);
 /// seen, and the materials they share.
 #[derive(Resource)]
 pub struct CarAssets {
-    liveries: HashMap<CarLook, LiveryAssets>,
+    /// Per look and per level of detail: a car spawned after the level changes is built at the new
+    /// one, while those already on the road keep theirs until they are spawned again.
+    liveries: HashMap<(CarLook, Detail), LiveryAssets>,
+    /// The level cars are built at now, kept in step with the graphics level ([`follow_detail`]).
+    detail: Detail,
     /// One thruster's flame, scaled to each nozzle.
     flame: Handle<Mesh>,
     /// Lit, colored by the meshes' own vertex colors.
@@ -148,17 +154,28 @@ struct LiveryAssets {
 impl CarAssets {
     fn livery(&mut self, look: CarLook, meshes: &mut Assets<Mesh>) -> LiveryAssets {
         let look = look.checked();
+        let detail = self.detail;
         self.liveries
-            .entry(look)
+            .entry((look, detail))
             .or_insert_with(|| {
                 let livery = Livery::of(look);
                 LiveryAssets {
-                    hull: meshes.add(car_model::hull_geometry(&livery).into_mesh()),
-                    lights: meshes.add(car_model::lights_geometry(&livery).into_mesh()),
+                    hull: meshes.add(car_model::hull_geometry(&livery, detail).into_mesh()),
+                    lights: meshes.add(car_model::lights_geometry(&livery, detail).into_mesh()),
                     under_glow: meshes.add(car_model::under_glow_geometry(&livery).into_mesh()),
                 }
             })
             .clone()
+    }
+}
+
+/// Cars are built at the graphics level's detail.
+fn follow_detail(quality: Res<Quality>, assets: Option<ResMut<CarAssets>>) {
+    if let Some(mut assets) = assets {
+        let detail = quality.level.look().detail;
+        if assets.detail != detail {
+            assets.detail = detail;
+        }
     }
 }
 
@@ -169,6 +186,7 @@ fn create_car_assets(
 ) {
     commands.insert_resource(CarAssets {
         liveries: HashMap::new(),
+        detail: Detail::STANDARD,
         flame: meshes.add(car_model::flame_geometry().into_mesh()),
         shadow: meshes.add(car_model::shadow_geometry().into_mesh()),
         shadow_material: materials.add(StandardMaterial {

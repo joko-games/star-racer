@@ -56,8 +56,8 @@ the French will go through (`client/src/i18n.rs`, only QUICK PLAY translated yet
    - a modern Windows installer and an auto-updater, done in v1.0.0-rc6 by Velopack
      (docs/installer.md), to be seen working once a release is built with them;
    - a richer, more detailed ULTRA, more graphics levels, and a VERY LOW that is geometrically
-     very simple yet fair: the simulation, and what a player can see of the road and the other
-     cars, the same at every level, so no level gives an edge.
+     very simple yet fair: done in v1.0.0-rc7, six levels (docs/graphics.md#shapes), to be judged
+     by the user, above all ULTRA's cars and VERY LOW's dark city.
 
 Also waiting:
 

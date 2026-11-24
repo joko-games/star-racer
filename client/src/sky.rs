@@ -19,6 +19,7 @@ use bevy::transform::TransformSystems;
 use crate::camera::MainCamera;
 use crate::dice::Dice;
 use crate::geometry::{Frame, Geometry};
+use crate::quality::{Detail, Quality};
 
 /// How far the sky stands from the camera, in meters: beyond everything on a circuit, and short of
 /// the 1 km past which the camera sees nothing.
@@ -43,9 +44,8 @@ const STAR_SIZE: (f32, f32) = (1.1, 4.2);
 /// Stars brighter than this, out of 1, wear a cross of light.
 const FLARE: f32 = 0.95;
 
-/// Pieces round a planet's disc, and rings of them from its middle to its edge: enough for the
-/// light to turn smoothly across it.
-const DISC_SEGMENTS: usize = 64;
+/// Rings of pieces from a planet's middle to its edge: enough for the light to turn smoothly
+/// across it. The pieces round it are the level's (`Detail::sky_segments`, 16 to 128).
 const DISC_RINGS: usize = 8;
 
 /// The colors stars come in, and how often, out of the sum of the weights: mostly a cool white, a
@@ -62,7 +62,7 @@ pub struct SkyPlugin;
 
 impl Plugin for SkyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_sky).add_systems(
+        app.add_systems(Update, rebuild_sky).add_systems(
             PostUpdate,
             (follow_camera, spin_shapes).before(TransformSystems::Propagate),
         );
@@ -91,10 +91,41 @@ fn toward(azimuth: f32, elevation: f32) -> Vec3 {
     )
 }
 
-fn spawn_sky(
+thread_local! {
+    /// How finely the sky is built: the graphics level's (`quality::Detail`), set while it is.
+    static DETAIL: std::cell::Cell<Detail> = const { std::cell::Cell::new(Detail::STANDARD) };
+}
+
+fn detail() -> Detail {
+    DETAIL.with(std::cell::Cell::get)
+}
+
+/// Builds the sky at the graphics level's detail, and again whenever that changes: its stars, the
+/// galaxy and the nebulae, and how round its planets are (docs/graphics.md#shapes).
+fn rebuild_sky(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    quality: Res<Quality>,
+    skies: Query<Entity, With<Sky>>,
+    mut built: Local<Option<Detail>>,
+) {
+    let wanted = quality.level.look().detail;
+    if *built == Some(wanted) {
+        return;
+    }
+    *built = Some(wanted);
+    for sky in &skies {
+        commands.entity(sky).despawn();
+    }
+    DETAIL.with(|detail| detail.set(wanted));
+    spawn_sky(&mut commands, &mut meshes, &mut materials);
+}
+
+fn spawn_sky(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
 ) {
     let mut solid = Canvas::default();
     let mut glow = Canvas::default();
@@ -170,7 +201,8 @@ fn spin_shapes(time: Res<Time>, mut shapes: Query<(&Spin, &mut Transform)>) {
 /// Stars all round, mostly over the horizon, a few bright ones wearing a cross of light.
 fn stars(solid: &mut Canvas, glow: &mut Canvas, dice: &mut Dice) {
     let mut placed = 0;
-    while placed < STARS {
+    let count = STARS * detail().stars as usize / 100;
+    while placed < count {
         let direction = anywhere(dice);
         if direction.y < -0.15 && dice.range(0.0, 1.0) > STARS_KEPT_BELOW {
             continue;
@@ -240,7 +272,7 @@ fn galaxy(glow: &mut Canvas, dice: &mut Dice) {
     let along = |angle: f32| first * angle.cos() + second * angle.sin();
 
     // A soft river of light along it, brighter and wider in places.
-    let clouds = 90;
+    let clouds = if detail().nebulae { 90 } else { 0 };
     for cloud in 0..clouds {
         let angle = TAU * (cloud as f32 + dice.range(-0.3, 0.3)) / clouds as f32;
         let swell = 0.5 + 0.5 * (angle * 3.0).sin().abs();
@@ -260,7 +292,7 @@ fn galaxy(glow: &mut Canvas, dice: &mut Dice) {
 
     // And stars crowding along it.
     let mut solid_stars = Canvas::default();
-    for _ in 0..BAND_STARS {
+    for _ in 0..BAND_STARS * detail().stars as usize / 100 {
         let angle = dice.range(0.0, TAU);
         let stray = (dice.range(-1.0, 1.0) + dice.range(-1.0, 1.0)) * BAND_SPREAD;
         let direction = (along(angle) + axis * stray).normalize();
@@ -285,6 +317,9 @@ fn galaxy(glow: &mut Canvas, dice: &mut Dice) {
 
 /// Clouds of colored light: a few nebulae, each a heap of soft blobs of two colors.
 fn nebulae(glow: &mut Canvas, dice: &mut Dice) {
+    if !detail().nebulae {
+        return;
+    }
     for (direction, size, colors) in [
         // Magenta and violet, in front of the menus.
         (
@@ -417,11 +452,11 @@ fn planets(solid: &mut Canvas, glow: &mut Canvas) {
 fn planet(canvas: &mut Canvas, center: Vec3, radius: f32, paint: impl Fn(Vec2) -> Color) {
     let (right, up) = facing(center.normalize());
     let point = |segment: usize, ring: usize| {
-        let angle = TAU * segment as f32 / DISC_SEGMENTS as f32;
+        let angle = TAU * segment as f32 / detail().sky_segments as f32;
         Vec2::new(angle.cos(), angle.sin()) * ring as f32 / DISC_RINGS as f32
     };
     let place = |point: Vec2| center + (right * point.x + up * point.y) * radius;
-    for segment in 0..DISC_SEGMENTS {
+    for segment in 0..detail().sky_segments {
         let next = segment + 1;
         let middle = Vec2::ZERO;
         let (a, b) = (point(segment, 1), point(next, 1));
@@ -455,7 +490,7 @@ fn shade(surface: Color, point: Vec2, light: Vec3) -> Color {
 /// A glow round a planet, from its edge out to a third of its radius further.
 fn halo(glow: &mut Canvas, center: Vec3, radius: f32, color: Color) {
     let (right, up) = facing(center.normalize());
-    let segments = DISC_SEGMENTS;
+    let segments = detail().sky_segments;
     let inner = color.with_alpha(0.35);
     let outer = color.with_alpha(0.0);
     let point = |segment: usize, reach: f32| {

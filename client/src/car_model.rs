@@ -31,6 +31,7 @@ use bevy::prelude::*;
 use star_racer_protocol::CarLook;
 
 use crate::geometry::{Frame, Geometry};
+use crate::quality::Detail;
 
 /// The cars, in the order the garage offers them and the wire numbers them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -265,8 +266,6 @@ struct Design {
 
 /// Where the lowest point of every wheel is: the road is cleared, the car hovers.
 const WHEEL_CLEARANCE: f32 = 0.22;
-/// The sides of a wheel's disc: few, so a grid of cars stays cheap to draw.
-const WHEEL_SIDES: usize = 8;
 
 // Comet: a rocket of a car, a teardrop seen from above, narrow, its tail tapering to a round
 // point round one big thruster, a single fin standing on its spine, small wheels; nothing like
@@ -491,16 +490,28 @@ fn face_colors(upper: Color, flank: Color, under: Color) -> [Color; 8] {
 }
 
 /// Builds a closed body through `sections`, its faces colored by `colors` and its two ends closed
-/// in `tail` and `nose`.
-fn loft(geometry: &mut Geometry, sections: &[Section], colors: [Color; 8], tail: Color, nose: Color) {
+/// in `tail` and `nose`, as finely as `detail` says ([`shaped`], [`rounded_ring`]).
+fn loft(
+    geometry: &mut Geometry,
+    sections: &[Section],
+    colors: [Color; 8],
+    tail: Color,
+    nose: Color,
+    detail: Detail,
+) {
+    let sections = shaped(sections, detail);
+    let sections = &sections[..];
+    let rounded = |section: &Section| rounded_ring(section, detail.car_round);
     let point = |section: &Section, at: Vec2| Vec3::new(section.x, at.y, at.x);
     let middle = |section: &Section| Vec3::new(section.x, (section.bottom + section.top) / 2.0, 0.0);
+    let color_of = |face: usize, faces: usize| colors[face * 8 / faces];
     for pair in sections.windows(2) {
         let (near, far) = (&pair[0], &pair[1]);
-        let (near_ring, far_ring) = (ring(near), ring(far));
+        let (near_ring, far_ring) = (rounded(near), rounded(far));
+        let faces = near_ring.len();
         let inside = (middle(near) + middle(far)) / 2.0;
-        for face in 0..8 {
-            let next = (face + 1) % 8;
+        for face in 0..faces {
+            let next = (face + 1) % faces;
             geometry.quad_facing_away(
                 [
                     point(near, near_ring[face]),
@@ -509,7 +520,7 @@ fn loft(geometry: &mut Geometry, sections: &[Section], colors: [Color; 8], tail:
                     point(far, far_ring[face]),
                 ],
                 inside,
-                colors[face],
+                color_of(face, faces),
             );
         }
     }
@@ -520,13 +531,81 @@ fn loft(geometry: &mut Geometry, sections: &[Section], colors: [Color; 8], tail:
     ] {
         let center = middle(end);
         let inside = center + Vec3::X * inward;
-        let points = ring(end);
-        for face in 0..8 {
+        let points = rounded(end);
+        let faces = points.len();
+        for face in 0..faces {
             let a = point(end, points[face]);
-            let b = point(end, points[(face + 1) % 8]);
+            let b = point(end, points[(face + 1) % faces]);
             geometry.quad_facing_away([center, a, b, b], inside, color);
         }
     }
+}
+
+/// The sections a body is built through at this level: the drawing's own, every other one of them
+/// on the coarsest level (the two ends always kept), or with `car_refine` more put in between each
+/// two on the finest, along a curve through their neighbors (Catmull-Rom), so the body's outline
+/// runs smooth instead of in straight pieces.
+fn shaped(sections: &[Section], detail: Detail) -> Vec<Section> {
+    if detail.car_coarse && sections.len() > 3 {
+        let last = sections.len() - 1;
+        return sections
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| index % 2 == 0 || *index == last)
+            .map(|(_, section)| *section)
+            .collect();
+    }
+    if detail.car_refine == 0 || sections.len() < 2 {
+        return sections.to_vec();
+    }
+    let at = |index: isize| sections[index.clamp(0, sections.len() as isize - 1) as usize];
+    let mut out = Vec::with_capacity(sections.len() * (detail.car_refine + 1));
+    for index in 0..sections.len() - 1 {
+        let index = index as isize;
+        let (p0, p1, p2, p3) = (at(index - 1), at(index), at(index + 1), at(index + 2));
+        out.push(p1);
+        for step in 1..=detail.car_refine {
+            let t = step as f32 / (detail.car_refine + 1) as f32;
+            let curve = |a: f32, b: f32, c: f32, d: f32| {
+                let value = 0.5
+                    * (2.0 * b
+                        + (c - a) * t
+                        + (2.0 * a - 5.0 * b + 4.0 * c - d) * t * t
+                        + (3.0 * b - a - 3.0 * c + d) * t * t * t);
+                // Never past either section it lies between: no bulge a straight body never had.
+                value.clamp(b.min(c), b.max(c))
+            };
+            out.push(Section {
+                x: p1.x + (p2.x - p1.x) * t,
+                half_width: curve(p0.half_width, p1.half_width, p2.half_width, p3.half_width),
+                bottom: curve(p0.bottom, p1.bottom, p2.bottom, p3.bottom),
+                top: curve(p0.top, p1.top, p2.top, p3.top),
+            });
+        }
+    }
+    out.push(sections[sections.len() - 1]);
+    out
+}
+
+/// The points round a section: [`ring`]'s eight, or on the finest level sixteen, a point put
+/// between each two and pushed out a little from the section's middle, so the body is rounded
+/// between its lines rather than cut flat. The eight stay where they are, and with them the lines
+/// the neon and the stripe follow.
+fn rounded_ring(section: &Section, round: bool) -> Vec<Vec2> {
+    let corners = ring(section);
+    if !round {
+        return corners.to_vec();
+    }
+    let middle = Vec2::new(0.0, (section.bottom + section.top) / 2.0);
+    let mut out = Vec::with_capacity(16);
+    for index in 0..8 {
+        let (a, b) = (corners[index], corners[(index + 1) % 8]);
+        out.push(a);
+        let between = (a + b) / 2.0;
+        let outward = (between - middle).normalize_or_zero();
+        out.push(between + outward * a.distance(b) * 0.12);
+    }
+    out
 }
 
 /// The height of the top of `sections` at `x`, along their middle.
@@ -561,28 +640,29 @@ fn stripe(geometry: &mut Geometry, sections: &[Section], runs: &[(f32, f32)]) {
 }
 
 /// The points round a wheel's disc, `z` across the car, as world points of the car.
-fn wheel_ring(axle: &Axle, z: f32, radius: f32) -> [Vec3; WHEEL_SIDES] {
+fn wheel_ring(axle: &Axle, z: f32, radius: f32, sides: usize) -> Vec<Vec3> {
     let center_y = WHEEL_CLEARANCE + axle.radius;
-    std::array::from_fn(|index| {
+    (0..sides).map(|index| {
         // A flat side at the bottom, so the lowest point is the clearance all along it.
-        let angle = (index as f32 + 0.5) / WHEEL_SIDES as f32 * TAU;
-        let corner = radius / (std::f32::consts::PI / WHEEL_SIDES as f32).cos();
+        let angle = (index as f32 + 0.5) / sides as f32 * TAU;
+        let corner = radius / (std::f32::consts::PI / sides as f32).cos();
         Vec3::new(
             axle.x + corner * angle.sin(),
             center_y - corner * angle.cos(),
             z,
         )
     })
+    .collect()
 }
 
 /// A hover-wheel either side of the car: a graphite disc, its outer face a lighter hub.
-fn wheels(geometry: &mut Geometry, axle: &Axle) {
+fn wheels(geometry: &mut Geometry, axle: &Axle, sides: usize) {
     for side in [-1.0f32, 1.0] {
-        let outer = wheel_ring(axle, side * axle.out, axle.radius);
-        let inner = wheel_ring(axle, side * (axle.out - axle.width), axle.radius);
+        let outer = wheel_ring(axle, side * axle.out, axle.radius, sides);
+        let inner = wheel_ring(axle, side * (axle.out - axle.width), axle.radius, sides);
         let center = Vec3::new(axle.x, WHEEL_CLEARANCE + axle.radius, side * (axle.out - axle.width / 2.0));
-        for index in 0..WHEEL_SIDES {
-            let next = (index + 1) % WHEEL_SIDES;
+        for index in 0..sides {
+            let next = (index + 1) % sides;
             geometry.quad_facing_away(
                 [outer[index], outer[next], inner[next], inner[index]],
                 center,
@@ -635,7 +715,7 @@ fn wing(geometry: &mut Geometry, frame: &Frame, wing: &Wing, livery: &Livery, bo
 }
 
 /// Everything of a car that takes the light: body, cabin, wheels, wings and fins.
-pub fn hull_geometry(livery: &Livery) -> Geometry {
+pub fn hull_geometry(livery: &Livery, detail: Detail) -> Geometry {
     let design = livery.model.design();
     let mut geometry = Geometry::default();
     let frame = Frame::new(Vec3::ZERO, Vec3::X, Vec3::Z);
@@ -646,10 +726,11 @@ pub fn hull_geometry(livery: &Livery) -> Geometry {
         face_colors(livery.body, GRAPHITE, UNDERSIDE),
         GRAPHITE,
         livery.body,
+        detail,
     );
-    loft(g, design.cabin, face_colors(GLASS_SHEEN, GLASS, GLASS), GLASS, GLASS);
+    loft(g, design.cabin, face_colors(GLASS_SHEEN, GLASS, GLASS), GLASS, GLASS, detail);
     for axle in &design.axles {
-        wheels(g, axle);
+        wheels(g, axle, detail.wheel_sides);
         if livery.model == CarModel::Nova {
             // The arm out to each wheel.
             for side in [-1.0f32, 1.0] {
@@ -711,7 +792,8 @@ fn widest_line(sections: &[Section], side: f32, skip: usize) -> Vec<Vec3> {
 
 /// The parts that shine by themselves: the thrusters' insides, the neon line along each flank, the
 /// ring round each wheel and the light bar, drawn unlit and brighter than white.
-pub fn lights_geometry(livery: &Livery) -> Geometry {
+pub fn lights_geometry(livery: &Livery, detail: Detail) -> Geometry {
+    let sides = detail.wheel_sides;
     let design = livery.model.design();
     let mut geometry = Geometry::default();
     let frame = Frame::new(Vec3::ZERO, Vec3::X, Vec3::Z);
@@ -725,11 +807,11 @@ pub fn lights_geometry(livery: &Livery) -> Geometry {
         // A ring of neon round each wheel's hub, on its outer face.
         for axle in &design.axles {
             let z = side * (axle.out + 0.012);
-            let outer = wheel_ring(axle, z, axle.radius * 0.86);
-            let inner = wheel_ring(axle, z, axle.radius * 0.68);
+            let outer = wheel_ring(axle, z, axle.radius * 0.86, sides);
+            let inner = wheel_ring(axle, z, axle.radius * 0.68, sides);
             let center = Vec3::new(axle.x, WHEEL_CLEARANCE + axle.radius, 0.0);
-            for index in 0..WHEEL_SIDES {
-                let next = (index + 1) % WHEEL_SIDES;
+            for index in 0..sides {
+                let next = (index + 1) % sides;
                 g.quad_facing_away(
                     [outer[index], outer[next], inner[next], inner[index]],
                     center,
@@ -909,7 +991,7 @@ mod tests {
     #[test]
     fn every_car_is_the_size_of_its_collisions_and_hovers() {
         for model in CarModel::ALL {
-            let hull = hull_geometry(&livery(model));
+            let hull = hull_geometry(&livery(model), Detail::STANDARD);
             let (min, max) = bounds(&hull);
             assert!(max.x > 2.1 && max.x < 2.75, "{model:?} {max}");
             assert!(min.x > -2.3, "{model:?} {min}");
@@ -931,7 +1013,7 @@ mod tests {
     #[test]
     fn the_thrusters_are_at_the_tail() {
         for model in CarModel::ALL {
-            let (min, _) = bounds(&hull_geometry(&livery(model)));
+            let (min, _) = bounds(&hull_geometry(&livery(model), Detail::STANDARD));
             for nozzle in nozzles(model) {
                 assert!(nozzle.at.x - min.x < 0.8, "{model:?} {nozzle:?} {min}");
                 assert!(flame_origin(nozzle).x < nozzle.at.x);
@@ -943,14 +1025,35 @@ mod tests {
     fn every_car_stays_light_to_draw() {
         for model in CarModel::ALL {
             let livery = livery(model);
-            let triangles = hull_geometry(&livery).triangles()
-                + lights_geometry(&livery).triangles()
+            let triangles = hull_geometry(&livery, Detail::STANDARD).triangles()
+                + lights_geometry(&livery, Detail::STANDARD).triangles()
                 + under_glow_geometry(&livery).triangles()
                 + shadow_geometry().triangles()
                 + flame_geometry().triangles() * nozzles(model).len();
             // A few thousand for a full grid of eight, against the 155,000 of the skyway and its
             // city.
             assert!(triangles < 1200, "{model:?} {triangles}");
+        }
+    }
+
+    /// The levels cut the same car into fewer or more polygons: the coarsest is cheaper than the
+    /// standard one, the finest dearer, and still affordable for a grid of eight.
+    #[test]
+    fn the_levels_cut_the_cars_finer_or_coarser() {
+        for model in CarModel::ALL {
+            let livery = livery(model);
+            let count = |detail: Detail| {
+                hull_geometry(&livery, detail).triangles() + lights_geometry(&livery, detail).triangles()
+            };
+            let (coarse, standard, fine) =
+                (count(Detail::VERY_LOW), count(Detail::STANDARD), count(Detail::ULTRA));
+            assert!(coarse < standard && standard < fine, "{model:?} {coarse} {standard} {fine}");
+            assert!(fine < 6000, "{model:?} {fine}");
+            // The same size whatever the level: a coarse car is no smaller a target to see.
+            let (low_min, low_max) = bounds(&hull_geometry(&livery, Detail::VERY_LOW));
+            let (high_min, high_max) = bounds(&hull_geometry(&livery, Detail::ULTRA));
+            assert!((low_min - high_min).length() < 0.1, "{model:?} {low_min} {high_min}");
+            assert!((low_max - high_max).length() < 0.1, "{model:?} {low_max} {high_max}");
         }
     }
 
@@ -975,7 +1078,7 @@ mod tests {
                     horn: 0,
                     turbo: 0,
                 });
-                assert!(brightest(hull_geometry(&livery)) <= 1.0);
+                assert!(brightest(hull_geometry(&livery, Detail::STANDARD)) <= 1.0);
             }
             for neon in 0..NEONS.len() {
                 let livery = Livery::of(CarLook {
@@ -988,7 +1091,7 @@ mod tests {
                     turbo: 0,
                 });
                 assert!(
-                    brightest(lights_geometry(&livery)) > 2.0,
+                    brightest(lights_geometry(&livery, Detail::STANDARD)) > 2.0,
                     "{model:?} {neon}"
                 );
             }

@@ -5,18 +5,20 @@
 //! Maximum : 60fps avec une 1050 ti en navigateur. Et donc on pourra régler tout cela dans un sous
 //! menu des settings").
 //!
-//! Four levels, LOW to ULTRA. What the game can learn without asking anything, nothing that brings
-//! up a prompt: the graphics adapter the renderer was given (its name, whether it is a discrete
-//! GPU, an integrated one or software), the processor's threads, on the web the memory the browser
-//! admits to, the screen's pixel density and whether it is a touchscreen. That picks a first level
-//! ([`detect`]). Then the race itself is measured: with the setting on AUTO, a level that holds the
-//! frame rate under [`SLOW_FPS`] for a few seconds steps down, never under LOW and never back up
+//! Six levels, VERY LOW to ULTRA (four, LOW to ULTRA, before v1.0.0-rc7). What the game can learn
+//! without asking anything, nothing that brings up a prompt: the graphics adapter the renderer was
+//! given (its name, whether it is a discrete GPU, an integrated one or software), the processor's
+//! threads, on the web the memory the browser admits to, the screen's pixel density and whether it
+//! is a touchscreen. That picks a first level ([`detect`]). Then the race itself is measured: with
+//! the setting on AUTO, a level that holds the frame rate under [`SLOW_FPS`] for a few seconds steps
+//! down, never under VERY LOW and never back up
 //! past what was detected ([`adapt`]). The player can also pick a level in the settings, which
 //! then stays put.
 //!
 //! What a level changes ([`Level::look`]): how many pixels the web page draws (a phone's screen
 //! is dense, and the cheapest saving is not to fill all of it), the moon's shadows and their
-//! resolution, the glow, multisampling, and the city's moving lights.
+//! resolution, the glow, multisampling, the city's moving lights, and since v1.0.0-rc7 how many
+//! polygons the shapes are built with ([`Detail`]), fair at every level.
 
 use bevy::render::view::Msaa;
 use bevy::light::DirectionalLightShadowMap;
@@ -34,42 +36,58 @@ use crate::ui::touch::Touchscreen;
 /// How fine the game is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Level {
+    VeryLow,
     Low,
     Medium,
     High,
+    VeryHigh,
     Ultra,
 }
 
 impl Level {
-    pub const ALL: [Level; 4] = [Level::Low, Level::Medium, Level::High, Level::Ultra];
+    pub const ALL: [Level; 6] = [
+        Level::VeryLow,
+        Level::Low,
+        Level::Medium,
+        Level::High,
+        Level::VeryHigh,
+        Level::Ultra,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
+            Level::VeryLow => "VERY LOW",
             Level::Low => "LOW",
             Level::Medium => "MEDIUM",
             Level::High => "HIGH",
+            Level::VeryHigh => "VERY HIGH",
             Level::Ultra => "ULTRA",
         }
     }
 
     fn lower(self) -> Option<Level> {
-        match self {
-            Level::Low => None,
-            Level::Medium => Some(Level::Low),
-            Level::High => Some(Level::Medium),
-            Level::Ultra => Some(Level::High),
-        }
+        let index = Level::ALL.iter().position(|level| *level == self)?;
+        index.checked_sub(1).map(|lower| Level::ALL[lower])
     }
 
     /// What this level draws.
     pub fn look(self) -> Look {
         match self {
+            Level::VeryLow => Look {
+                pixels: 0.45,
+                shadows: None,
+                bloom: false,
+                msaa: Msaa::Off,
+                city_lights: false,
+                detail: Detail::VERY_LOW,
+            },
             Level::Low => Look {
                 pixels: 0.55,
                 shadows: None,
                 bloom: false,
                 msaa: Msaa::Off,
                 city_lights: false,
+                detail: Detail::LOW,
             },
             Level::Medium => Look {
                 pixels: 0.8,
@@ -77,6 +95,7 @@ impl Level {
                 bloom: true,
                 msaa: Msaa::Off,
                 city_lights: false,
+                detail: Detail::STANDARD,
             },
             Level::High => Look {
                 pixels: 1.0,
@@ -84,6 +103,15 @@ impl Level {
                 bloom: true,
                 msaa: Msaa::Off,
                 city_lights: true,
+                detail: Detail::STANDARD,
+            },
+            Level::VeryHigh => Look {
+                pixels: 1.25,
+                shadows: Some(4096),
+                bloom: true,
+                msaa: Msaa::Sample4,
+                city_lights: true,
+                detail: Detail::STANDARD,
             },
             Level::Ultra => Look {
                 pixels: 1.5,
@@ -91,6 +119,7 @@ impl Level {
                 bloom: true,
                 msaa: Msaa::Sample4,
                 city_lights: true,
+                detail: Detail::ULTRA,
             },
         }
     }
@@ -108,6 +137,85 @@ pub struct Look {
     pub msaa: Msaa,
     /// The city's traffic and searchlights.
     pub city_lights: bool,
+    /// How many polygons the shapes are built with.
+    pub detail: Detail,
+}
+
+/// How finely the shapes are built (since v1.0.0-rc7, docs/graphics.md#shapes): the same shapes at
+/// every level, only cut into fewer or more polygons, and the decoration that hides nothing taken
+/// off at the bottom. **Fair at every level**: the simulation never sees any of it, and what stands
+/// in a player's way -- the road, its walls and markings, the other cars, every building, the fog
+/// -- is there at every level, in the same place and of the same size, so no level sees further or
+/// more than another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Detail {
+    /// Strips across the road: more follow a banked road's curve more closely.
+    pub road_strips: usize,
+    /// The cars' bodies: sections put in between those drawn (0 for none), the ring round each
+    /// rounded off between its corners, and every other section left out.
+    pub car_refine: usize,
+    pub car_round: bool,
+    pub car_coarse: bool,
+    /// Sides of a wheel.
+    pub wheel_sides: usize,
+    /// The sky's stars drawn, in percent of the standard sky; the galaxy's band and the nebulae;
+    /// and the segments of a planet's disc.
+    pub stars: u32,
+    pub nebulae: bool,
+    pub sky_segments: usize,
+    /// The neon the scenery is lined with: its buildings' windows and bands, crowns, stripes and
+    /// arches. Off, the buildings still stand, dark, where they always do.
+    pub scenery_neon: bool,
+}
+
+impl Detail {
+    /// Box-like cars, a road in four strips, a sky of a few stars, the city dark.
+    pub const VERY_LOW: Detail = Detail {
+        road_strips: 4,
+        car_refine: 0,
+        car_round: false,
+        car_coarse: true,
+        wheel_sides: 6,
+        stars: 20,
+        nebulae: false,
+        sky_segments: 16,
+        scenery_neon: false,
+    };
+    pub const LOW: Detail = Detail {
+        road_strips: 6,
+        car_refine: 0,
+        car_round: false,
+        car_coarse: false,
+        wheel_sides: 8,
+        stars: 50,
+        nebulae: true,
+        sky_segments: 32,
+        scenery_neon: true,
+    };
+    /// What every level drew until v1.0.0-rc7.
+    pub const STANDARD: Detail = Detail {
+        road_strips: 8,
+        car_refine: 0,
+        car_round: false,
+        car_coarse: false,
+        wheel_sides: 8,
+        stars: 100,
+        nebulae: true,
+        sky_segments: 64,
+        scenery_neon: true,
+    };
+    /// Rounded cars, a road in sixteen strips, a fuller sky.
+    pub const ULTRA: Detail = Detail {
+        road_strips: 16,
+        car_refine: 3,
+        car_round: true,
+        car_coarse: false,
+        wheel_sides: 20,
+        stars: 160,
+        nebulae: true,
+        sky_segments: 128,
+        scenery_neon: true,
+    };
 }
 
 /// The player's choice in the settings: fitted to the machine, or a level of their own.
@@ -122,7 +230,7 @@ impl Setting {
     /// The next choice, as the settings step through them.
     pub fn next(self) -> Self {
         match self {
-            Setting::Auto => Setting::Fixed(Level::Low),
+            Setting::Auto => Setting::Fixed(Level::VeryLow),
             Setting::Fixed(Level::Ultra) => Setting::Auto,
             Setting::Fixed(level) => Setting::Fixed(
                 Level::ALL[Level::ALL.iter().position(|l| *l == level).unwrap_or(0) + 1],
@@ -171,13 +279,19 @@ pub fn detect(machine: &Machine) -> Level {
     let phone_gpu = ["adreno", "mali", "powervr", "apple gpu", "apple a"]
         .iter()
         .any(|part| name.contains(part));
+    // ULTRA, the finest shapes, for the cards of the last few years; an older discrete card, the
+    // GTX 1050 Ti the game was made on among them, holds VERY HIGH.
+    let recent = ["rtx", "radeon rx 6", "radeon rx 7", "radeon rx 9", "arc a", "arc b"]
+        .iter()
+        .any(|part| name.contains(part));
     let mut level = match machine.gpu_kind {
-        GpuKind::Software => Level::Low,
-        GpuKind::Discrete => Level::Ultra,
-        GpuKind::Integrated if strong_name => Level::Ultra,
+        GpuKind::Software => Level::VeryLow,
+        _ if recent => Level::Ultra,
+        GpuKind::Discrete => Level::VeryHigh,
+        GpuKind::Integrated if strong_name => Level::VeryHigh,
         GpuKind::Integrated => Level::Medium,
         // A browser often hides the kind and gives a name, or nothing at all.
-        GpuKind::Unknown if strong_name => Level::Ultra,
+        GpuKind::Unknown if strong_name => Level::VeryHigh,
         GpuKind::Unknown if name.contains("apple m") => Level::High,
         GpuKind::Unknown if name.contains("intel") || name.contains("radeon") => Level::Medium,
         GpuKind::Unknown => Level::High,
@@ -194,6 +308,9 @@ pub fn detect(machine: &Machine) -> Level {
     }
     if machine.memory.is_some_and(|memory| memory <= 4.0) {
         level = level.min(Level::Low);
+    }
+    if machine.memory.is_some_and(|memory| memory <= 2.0) {
+        level = level.min(Level::VeryLow);
     }
     level
 }
@@ -417,19 +534,23 @@ mod tests {
     #[test]
     fn the_machine_picks_its_level() {
         let desk = machine("NVIDIA GeForce GTX 1050 Ti", GpuKind::Discrete, 6, false);
-        assert_eq!(detect(&desk), Level::Ultra);
+        assert_eq!(detect(&desk), Level::VeryHigh);
         // In a browser the kind is often hidden, the name not.
         let browser = machine("ANGLE (NVIDIA, NVIDIA GeForce GTX 1050 Ti Direct3D11)", GpuKind::Unknown, 6, false);
-        assert_eq!(detect(&browser), Level::Ultra);
+        assert_eq!(detect(&browser), Level::VeryHigh);
+        let recent = machine("NVIDIA GeForce RTX 3060", GpuKind::Discrete, 12, false);
+        assert_eq!(detect(&recent), Level::Ultra);
         let phone = machine("Adreno (TM) 610", GpuKind::Unknown, 8, true);
         assert_eq!(detect(&phone), Level::Low);
         let laptop = machine("Intel(R) UHD Graphics 620", GpuKind::Integrated, 8, false);
         assert_eq!(detect(&laptop), Level::Medium);
         let software = machine("llvmpipe", GpuKind::Software, 8, false);
-        assert_eq!(detect(&software), Level::Low);
+        assert_eq!(detect(&software), Level::VeryLow);
         let mut small = machine("Mali-G57", GpuKind::Unknown, 8, true);
         small.memory = Some(3.0);
         assert_eq!(detect(&small), Level::Low);
+        small.memory = Some(2.0);
+        assert_eq!(detect(&small), Level::VeryLow);
     }
 
     /// The settings step through AUTO and every level, and back.
@@ -437,17 +558,21 @@ mod tests {
     fn the_setting_steps_round() {
         let mut setting = Setting::Auto;
         let mut seen = Vec::new();
-        for _ in 0..5 {
+        for _ in 0..7 {
             setting = setting.next();
             seen.push(setting);
         }
         assert_eq!(seen.last(), Some(&Setting::Auto));
-        assert_eq!(seen[3], Setting::Fixed(Level::Ultra));
+        assert_eq!(seen[0], Setting::Fixed(Level::VeryLow));
+        assert_eq!(seen[5], Setting::Fixed(Level::Ultra));
         // Each level draws at least what the one under it does.
         for pair in Level::ALL.windows(2) {
             let (low, high) = (pair[0].look(), pair[1].look());
             assert!(high.pixels >= low.pixels);
             assert!(high.shadows.unwrap_or(0) >= low.shadows.unwrap_or(0));
+            assert!(high.detail.road_strips >= low.detail.road_strips);
+            assert!(high.detail.wheel_sides >= low.detail.wheel_sides);
+            assert!(high.detail.stars >= low.detail.stars);
         }
     }
 }

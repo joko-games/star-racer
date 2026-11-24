@@ -21,6 +21,7 @@ use star_racer_sim::track::{Track, TrackPoint};
 use crate::city::{self, Landmarks};
 use crate::geometry::Geometry;
 use crate::lobby::{CurrentLobby, Tracks};
+use crate::quality::{Detail, Quality};
 use crate::scenery;
 use crate::screen::Screen;
 use crate::world;
@@ -43,8 +44,16 @@ const DASH_PIECES: usize = 4;
 const START_SQUARE: f32 = 1.0;
 /// Markings sit this far above the road, so they do not flicker against it.
 const MARKING_HEIGHT: f32 = 0.02;
-/// Strips across the road, so its surface follows the curve of banked turns.
-const ROAD_STRIPS: usize = 8;
+thread_local! {
+    /// Strips across the road, so its surface follows the curve of banked turns: the level's
+    /// (`quality::Detail::road_strips`, 4 to 16), set while a circuit is built ([`track_meshes`]),
+    /// since the road and every marking laid on its strips must agree on them.
+    static ROAD_STRIPS: std::cell::Cell<usize> = const { std::cell::Cell::new(8) };
+}
+
+fn road_strips() -> usize {
+    ROAD_STRIPS.with(std::cell::Cell::get)
+}
 
 const ROAD: Color = Color::srgb(0.1, 0.1, 0.11);
 const WALL_DARK: Color = Color::srgb(0.17, 0.17, 0.19);
@@ -117,6 +126,7 @@ fn spawn_track(
     mut commands: Commands,
     current: Res<CurrentLobby>,
     tracks: Res<Tracks>,
+    quality: Res<Quality>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -134,6 +144,7 @@ fn spawn_track(
         &mut materials,
         &track,
         &entry.description.scenery,
+        quality.level.look().detail,
         TrackScene,
     );
     city::spawn(
@@ -167,6 +178,7 @@ pub fn spawn_scene(
     materials: &mut Assets<StandardMaterial>,
     track: &Track,
     props: &[Prop],
+    detail: Detail,
     marker: impl Component + Clone,
 ) -> (usize, Landmarks) {
     // Colors come from the vertices; the materials only set how the surfaces take light.
@@ -177,7 +189,7 @@ pub fn spawn_scene(
         glow,
         triangles,
         landmarks,
-    } = track_meshes(track, props);
+    } = track_meshes(track, props, detail);
     let lit_material = materials.add(StandardMaterial {
         perceptual_roughness: 0.9,
         ..default()
@@ -247,7 +259,8 @@ struct TrackMeshes {
     landmarks: Landmarks,
 }
 
-fn track_meshes(track: &Track, props: &[Prop]) -> TrackMeshes {
+fn track_meshes(track: &Track, props: &[Prop], detail: Detail) -> TrackMeshes {
+    ROAD_STRIPS.with(|strips| strips.set(detail.road_strips));
     let mut lit = Geometry::default();
     let mut neon = Geometry::default();
     let mut glow = Geometry::default();
@@ -267,7 +280,11 @@ fn track_meshes(track: &Track, props: &[Prop]) -> TrackMeshes {
     let mut scenery = Geometry::default();
     piers::piers(&mut scenery, &mut neon, track);
     piers::keel_lines(&mut neon, track);
-    let landmarks = scenery::build(&mut scenery, &mut neon, track, props);
+    // Without the scenery's neon, its buildings are still built, from the same dice, in the same
+    // places: only their lights go nowhere.
+    let mut dark = Geometry::default();
+    let scenery_neon = if detail.scenery_neon { &mut neon } else { &mut dark };
+    let landmarks = scenery::build(&mut scenery, scenery_neon, track, props);
     TrackMeshes {
         triangles: lit.triangles() + scenery.triangles() + neon.triangles() + glow.triangles(),
         lit: lit.into_mesh(),
@@ -282,9 +299,10 @@ fn track_meshes(track: &Track, props: &[Prop]) -> TrackMeshes {
 /// number of meters, so the surface follows the walls in and out through a bottleneck.
 fn road(geometry: &mut Geometry, track: &Track) {
     for_each_road_segment(track, |a, b, _| {
-        for index in 0..ROAD_STRIPS {
-            let left = 1.0 - 2.0 * index as f32 / ROAD_STRIPS as f32;
-            let right = left - 2.0 / ROAD_STRIPS as f32;
+        let strips = road_strips();
+        for index in 0..strips {
+            let left = 1.0 - 2.0 * index as f32 / strips as f32;
+            let right = left - 2.0 / strips as f32;
             let corners = [
                 on_road(track, a, left * a.half_width, 0.0),
                 on_road(track, a, right * a.half_width, 0.0),
@@ -301,9 +319,10 @@ fn road(geometry: &mut Geometry, track: &Track) {
 fn underside(geometry: &mut Geometry, track: &Track) {
     for_each_road_segment(track, |a, b, _| {
         let edge = |point: TrackPoint| point.half_width + WALL_THICKNESS;
-        for index in 0..ROAD_STRIPS {
-            let left = 1.0 - 2.0 * index as f32 / ROAD_STRIPS as f32;
-            let right = left - 2.0 / ROAD_STRIPS as f32;
+        let strips = road_strips();
+        for index in 0..strips {
+            let left = 1.0 - 2.0 * index as f32 / strips as f32;
+            let right = left - 2.0 / strips as f32;
             let corners = [
                 on_road(track, a, left * edge(a), -SLAB),
                 on_road(track, a, right * edge(a), -SLAB),
@@ -440,12 +459,13 @@ fn on_road(track: &Track, point: TrackPoint, lateral: f32, above: f32) -> Vec3 {
 /// on the curve itself sank under the road there, and showed as dashes. Off the road, it is the
 /// curve's height, which carries on flat beyond the edges.
 fn built_height(track: &Track, point: &TrackPoint, lateral: f32) -> f32 {
-    let strip = 2.0 * point.half_width / ROAD_STRIPS as f32;
+    let strips = road_strips() as f32;
+    let strip = 2.0 * point.half_width / strips;
     let from_right = (lateral + point.half_width) / strip;
-    if !(0.0..=ROAD_STRIPS as f32).contains(&from_right) {
+    if !(0.0..=strips).contains(&from_right) {
         return track.height_beside(point, lateral);
     }
-    let edge = from_right.floor().min(ROAD_STRIPS as f32 - 1.0);
+    let edge = from_right.floor().min(strips - 1.0);
     let across = |edge: f32| track.height_beside(point, edge * strip - point.half_width);
     let (near, far) = (across(edge), across(edge + 1.0));
     near + (far - near) * (from_right - edge)

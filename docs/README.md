@@ -16,7 +16,7 @@ the current status; these pages explain *why* the code looks the way it does.
 - [Interface](ui.md) — screens, look, widgets, keyboard and gamepad navigation.
 - [The beta panel and feedback](feedback.md) — the controls, the version and FEEDBACK in an amber frame, the editor, and feedback kept and mailed by the server.
 - [Sound](sound.md) — sounds synthesized in code, and when they play.
-- [Graphics quality](graphics.md) — the machine measured silently, four levels, AUTO stepping down when a race runs slow.
+- [Graphics quality](graphics.md) — the machine measured silently, six levels from VERY LOW to ULTRA, shapes cut finer or coarser yet fair, AUTO stepping down when a race runs slow.
 - [Sky](sky.md) — the starry night over the circuits, at infinity and made of triangles.
 - [Night](night.md) — the glow, the haze, the light on the road, the piers, and the city that moves.
 - [Latency](latency.md) — where the time between a press and the car's answer goes, and how it is measured.
