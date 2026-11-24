@@ -17,7 +17,9 @@ There are two ways to deploy, and they do the same three things to the machine:
   uploads what was built last time, `-UploadOnly` stops once the archive is on the machine, and
   `-Key` and `-WebPath` point it somewhere else. `-Server root@<host>` is required since
   v1.0.0-rc1: no host is written in the repository, and the Deploy workflow reads its own from the
-  repository's `DEPLOY_HOST` variable.
+  repository's `DEPLOY_HOST` variable. The Windows client offered for download is built with `STAR_RACER_SERVER` set to that
+  host (or to `-GameServer`), so it plays on the site's server unless told otherwise (since
+  v1.0.0-rc3; built without it, it would play on `localhost`).
 
 Both build the game server for Linux and the client for the browser, upload them, and run
 `deploy/install.sh` as root on the machine.
@@ -161,7 +163,15 @@ DocumentRoot /var/www/html/star-racer
 </Directory>
 ```
 
-`deploy.ps1` defaults to this machine since then (`root@<host>`, the page at the root).
+`deploy.ps1` is given this machine since then (`-Server root@<host>`, the page at the root).
+
+On 2026-11-24 the machine was made again by the user (Ubuntu 26.04, 2 cores, 3.9 GB, a disk of
+17 GB, Apache and a certbot certificate for the site's domain only), and the game set up on it by
+hand in exactly the layout above: the user, the home, the web directory, the unit (now with an
+`[Install]` section, enabled so it starts with the machine), `/etc/apache2/star-racer.conf`
+included after certbot's line in `000-default-le-ssl.conf` (the file before kept beside it), and
+`proxy` and `proxy_http` enabled. No `mail.netrc` yet: feedback is kept on the machine, not mailed
+(docs/feedback.md).
 What follows is the machine before.
 
 ### The machine from November 2026 to 2026-11-17

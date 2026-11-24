@@ -19,6 +19,9 @@ param(
     # Only used to fetch the page back at the end: where the game is served is the machine's
     # Apache configuration to decide, not this script's.
     [string]$WebPath = '',
+    # The server the Windows client offered for download plays on unless told otherwise, compiled
+    # into it (STAR_RACER_SERVER): the machine's own host by default, never stored.
+    [string]$GameServer = '',
     [switch]$SkipBuild,
     # Uploads the archive and stops there, without unpacking or installing it: for a run meant
     # only to carry the build over, the install being done by hand afterwards.
@@ -93,9 +96,16 @@ if (-not $SkipBuild) {
         # The `web` profile: built for size, since the module is downloaded before the first frame.
         cargo build --locked --profile web -p star-racer-client --target wasm32-unknown-unknown
     }
-    Invoke-Checked 'building the Windows client offered for download' {
-        # The whole workspace, as run-release.ps1 builds it, so the two share one release cache.
-        cargo build --locked --release --workspace
+    # The whole workspace, as run-release.ps1 builds it, so the two share one release cache; the
+    # client is rebuilt the next time run-release.ps1 runs without the variable, a couple of minutes.
+    $env:STAR_RACER_SERVER = if ($GameServer) { $GameServer } else { $Server.Split('@')[-1] }
+    try {
+        Invoke-Checked "building the Windows client offered for download (playing on $env:STAR_RACER_SERVER)" {
+            cargo build --locked --release --workspace
+        }
+    }
+    finally {
+        Remove-Item Env:STAR_RACER_SERVER
     }
 }
 
@@ -124,19 +134,19 @@ Remove-Item "$stage/package" -Recurse -Force
 # its data folder beside it, where it looks when given none, its README and the license. For
 # Windows from the release build above, for Linux the same static binary the machine runs.
 foreach ($system in 'windows', 'linux') {
-    $server = "$stage/package/star-racer-server"
-    New-Item -ItemType Directory -Path $server | Out-Null
+    $serverPackage = "$stage/package/star-racer-server"
+    New-Item -ItemType Directory -Path $serverPackage | Out-Null
     if ($system -eq 'windows') {
-        Copy-Item 'target/release/star-racer-server.exe' $server
+        Copy-Item 'target/release/star-racer-server.exe' $serverPackage
     }
     else {
-        Copy-Item 'target/x86_64-unknown-linux-musl/release/star-racer-server' $server
+        Copy-Item 'target/x86_64-unknown-linux-musl/release/star-racer-server' $serverPackage
     }
-    Copy-Item 'server/data' "$server/data" -Recurse
-    Copy-Item 'LICENSE' $server
-    Copy-Item 'deploy/server-readme.txt' "$server/README.txt"
+    Copy-Item 'server/data' "$serverPackage/data" -Recurse
+    Copy-Item 'LICENSE' $serverPackage
+    Copy-Item 'deploy/server-readme.txt' "$serverPackage/README.txt"
     if ($system -eq 'windows') {
-        Compress-Archive -Path $server -DestinationPath "$stage/web/downloads/star-racer-server-windows-x86_64.zip"
+        Compress-Archive -Path $serverPackage -DestinationPath "$stage/web/downloads/star-racer-server-windows-x86_64.zip"
     }
     else {
         # Windows' tar records every file as 0666, so the program would not run once unpacked. An
