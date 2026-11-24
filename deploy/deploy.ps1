@@ -19,9 +19,6 @@ param(
     # Only used to fetch the page back at the end: where the game is served is the machine's
     # Apache configuration to decide, not this script's.
     [string]$WebPath = '',
-    # The server the Windows client offered for download plays on unless told otherwise, compiled
-    # into it (STAR_RACER_SERVER): the machine's own host by default, never stored.
-    [string]$GameServer = '',
     [switch]$SkipBuild,
     # Uploads the archive and stops there, without unpacking or installing it: for a run meant
     # only to carry the build over, the install being done by hand afterwards.
@@ -96,16 +93,11 @@ if (-not $SkipBuild) {
         # The `web` profile: built for size, since the module is downloaded before the first frame.
         cargo build --locked --profile web -p star-racer-client --target wasm32-unknown-unknown
     }
-    # The whole workspace, as run-release.ps1 builds it, so the two share one release cache; the
-    # client is rebuilt the next time run-release.ps1 runs without the variable, a couple of minutes.
-    $env:STAR_RACER_SERVER = if ($GameServer) { $GameServer } else { $Server.Split('@')[-1] }
-    try {
-        Invoke-Checked "building the Windows client offered for download (playing on $env:STAR_RACER_SERVER)" {
-            cargo build --locked --release --workspace
-        }
-    }
-    finally {
-        Remove-Item Env:STAR_RACER_SERVER
+    # The whole workspace, as run-release.ps1 builds it, so the two share one release cache. Only
+    # the Windows server is taken from it: since v1.0.0-rc6 the Windows game is offered as the
+    # installer of the latest GitHub release (docs/installer.md), not from this site.
+    Invoke-Checked 'building the Windows server offered for download' {
+        cargo build --locked --release --workspace
     }
 }
 
@@ -123,13 +115,6 @@ Copy-Item 'site/*' "$stage/web" -Recurse
 Copy-Item 'client/web/*' $game
 # No video since v0.1.14: the trailer and the loop behind the title were taken off the site, to be
 # made again (docs/film.md#the-trailer); the site shows its poster.
-# The Windows client, as the Release workflow packed it: the program, the license, the font's.
-$package = "$stage/package/star-racer"
-New-Item -ItemType Directory -Path $package | Out-Null
-Copy-Item 'target/release/star-racer-client.exe', 'LICENSE' $package
-Copy-Item 'client/assets/fonts/OFL.txt' "$package/FONT-LICENSE.txt"
-Compress-Archive -Path $package -DestinationPath "$stage/web/downloads/star-racer-windows-x86_64.zip"
-Remove-Item "$stage/package" -Recurse -Force
 # The game server for whoever wants their own (since v0.1.14, download.html#server): the program,
 # its data folder beside it, where it looks when given none, its README and the license. For
 # Windows from the release build above, for Linux the same static binary the machine runs.
@@ -239,10 +224,10 @@ $url = "https://$hostName$WebPath/"
 Write-Host "==> checking $url" -ForegroundColor Cyan
 $page = Invoke-WebRequest $url -UseBasicParsing
 $served = Invoke-WebRequest "$url`play/star-racer-client_bg.wasm" -Method Head -UseBasicParsing
-$download = Invoke-WebRequest "$url`downloads/star-racer-windows-x86_64.zip" -Method Head -UseBasicParsing
+$download = Invoke-WebRequest "$url`downloads/star-racer-server-windows-x86_64.zip" -Method Head -UseBasicParsing
 # A compressed answer carries no length, so the size is only reported when the server gives one.
 $length = $served.Headers['Content-Length'] | Select-Object -First 1
 $size = if ($length) { ', {0:n1} MB' -f ($length / 1MB) } else { '' }
 $type = $served.Headers['Content-Type'] | Select-Object -First 1
-Write-Host "    site $($page.StatusCode), game module $($served.StatusCode) ($type$size), Windows download $($download.StatusCode)"
+Write-Host "    site $($page.StatusCode), game module $($served.StatusCode) ($type$size), Windows server download $($download.StatusCode)"
 Write-Host "Star Racer is live at $url" -ForegroundColor Green

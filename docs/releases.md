@@ -4,10 +4,11 @@ Since v0.1.41 (2026-11-13, the user's request "Tu maintiendras les releases gith
 en téléchargement ce qu'il faut sur le site de star racer"), every version that goes online also
 gets a GitHub release with the desktop client to download, and the site offers it.
 
-**Since v0.1.7 the downloads are on the site itself**: GitHub is gone (2026-11-23, "Je n'ai plus
-github"), its releases with it, and `deploy.ps1` builds the Windows client and puts it at
-`/downloads/star-racer-windows-x86_64.zip` with every version deployed; Linux and macOS wait for a
-machine that can build them (see [Deployment](deploy.md#the-site)). What follows is the history.
+**Since v1.0.0-rc6 the games to download are the latest release's again**: the Windows installer
+(`StarRacer-win-Setup.exe`, [The installer](installer.md)), which also feeds the installed games'
+updates, and the Linux build. From v0.1.7 to v1.0.0-rc5, while GitHub was gone (2026-11-23, "Je
+n'ai plus github"), `deploy.ps1` built the Windows client and put it on the site at
+`/downloads/star-racer-windows-x86_64.zip`; the game servers to download still are put there.
 
 ## When a release is made
 

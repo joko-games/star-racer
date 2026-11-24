@@ -17,9 +17,9 @@ There are two ways to deploy, and they do the same three things to the machine:
   uploads what was built last time, `-UploadOnly` stops once the archive is on the machine, and
   `-Key` and `-WebPath` point it somewhere else. `-Server root@<host>` is required since
   v1.0.0-rc1: no host is written in the repository, and the Deploy workflow reads its own from the
-  repository's `DEPLOY_HOST` variable. The Windows client offered for download is built with `STAR_RACER_SERVER` set to that
-  host (or to `-GameServer`), so it plays on the site's server unless told otherwise (since
-  v1.0.0-rc3; built without it, it would play on `localhost`).
+  repository's `DEPLOY_HOST` variable. The Windows game is no longer packed here since v1.0.0-rc6: the site offers the installer
+  of the latest GitHub release ([The installer](installer.md)); only the game servers to download
+  are.
 
 Both build the game server for Linux and the client for the browser, upload them, and run
 `deploy/install.sh` as root on the machine.
@@ -250,11 +250,12 @@ is a site with the game inside it, rather than the game alone:
 - `/play/` is the game, `client/web` and the module, full page as before. A page served from a
   `play/` directory plays on the server one level up, `/ws` (`settings::game_directory`), so the
   proxy is unchanged.
-- `/download.html` (`site/download.html`) offers the Windows client, built and packed by
-  `deploy.ps1` into `/downloads/star-racer-windows-x86_64.zip`, the program, the license and the
-  font's. The GitHub releases it linked to are gone with GitHub, and with them the Linux and macOS
-  builds, which a Windows machine cannot make: the page says they are coming back and sends those
-  players to the browser.
+- `/download.html` (`site/download.html`) offers, since v1.0.0-rc6, the Windows installer and the
+  Linux build of the latest GitHub release, under the names that never change
+  (`releases/latest/download/...`, [The installer](installer.md)), and the game servers `deploy.ps1`
+  packs into `/downloads/`. macOS waits for a release GitHub finds a Mac for, and sends its
+  players to the browser meanwhile. From v0.1.7 to v1.0.0-rc5, while GitHub was gone, `deploy.ps1`
+  packed the Windows client itself into `/downloads/star-racer-windows-x86_64.zip`.
 
 `deploy.ps1` lays it out: the site at the root of `web/`, the game in `web/play/`, and the download.
 Until v0.1.14 the page also had the race looping silently behind the title (`media/loop.mp4`) and

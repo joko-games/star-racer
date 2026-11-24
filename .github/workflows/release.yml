@@ -92,6 +92,33 @@ jobs:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
 
+      # The Windows installer and the update feed, by Velopack (docs/installer.md): Setup.exe
+      # installs the game for the user in one click, with its shortcuts, and the installed game
+      # reads releases.win.json and the full package from the latest release to update itself.
+      # vpk is pinned to the velopack crate the client uses.
+      - name: Pack the installer
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          dotnet tool install --global vpk --version 1.3.39-g8d2844f
+          "$USERPROFILE/.dotnet/tools/vpk" pack \
+            --packId StarRacer \
+            --packVersion "${TAG#v}" \
+            --packDir package/star-racer \
+            --mainExe star-racer-client.exe \
+            --packTitle "Star Racer" \
+            --packAuthors "Star Racer" \
+            --icon logo/star-racer.ico \
+            --splashImage logo/star-racer.png \
+            --outputDir velopack
+          ls -l velopack
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: velopack-windows
+          path: velopack/*
+
   # Published even when a build did not come back: macOS's hosted runners are often out of
   # capacity (the job is then cancelled unacquired, twice for v1.0.0-rc2), and the user chose a
   # release without macOS over none on 2026-11-24 ("Oui, sans macOS"). Windows and Linux are still
@@ -109,7 +136,8 @@ jobs:
       - name: Check the required builds are there
         run: |
           ls -l assets
-          for required in star-racer-windows-x86_64.zip star-racer-linux-x86_64.tar.gz; do
+          for required in star-racer-windows-x86_64.zip star-racer-linux-x86_64.tar.gz \
+              StarRacer-win-Setup.exe releases.win.json; do
             [ -f "assets/$required" ] || { echo "::error::$required was not built"; exit 1; }
           done
           [ -f assets/star-racer-macos-arm64.tar.gz ] \

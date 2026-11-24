@@ -38,6 +38,8 @@ mod ui;
 mod weight;
 mod world;
 #[cfg(not(target_arch = "wasm32"))]
+mod update;
+#[cfg(not(target_arch = "wasm32"))]
 mod window_icon;
 
 use bevy::prelude::*;
@@ -57,6 +59,9 @@ fn web_frame_pacing() -> bevy::winit::WinitSettings {
 }
 
 fn main() {
+    // The installer's and the updater's own runs end here; an update downloaded last time goes in.
+    #[cfg(not(target_arch = "wasm32"))]
+    update::on_launch();
     let settings = settings::read();
     // Before anything is drawn: every text is chosen in this language.
     i18n::init(settings.lang.as_deref());
@@ -156,6 +161,8 @@ fn main() {
     app.add_plugins(turbo_fx::TurboFxPlugin);
     #[cfg(not(target_arch = "wasm32"))]
     app.add_plugins(window_icon::WindowIconPlugin);
+    #[cfg(not(target_arch = "wasm32"))]
+    app.add_plugins(update::UpdatePlugin);
 
     #[cfg(not(target_arch = "wasm32"))]
     if let Some((path, delay)) = settings.capture {

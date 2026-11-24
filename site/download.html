@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Download Star Racer</title>
-  <meta name="description" content="Star Racer for Windows: an online arcade racing game at full speed. Linux and macOS players race in the browser.">
+  <meta name="description" content="Star Racer for Windows and Linux: an online arcade racing game at full speed. macOS players race in the browser.">
   <link rel="icon" href="/favicon.png">
   <style>
     /* The menus' colors (client/src/ui/theme.rs): a dark translucent panel, neon blue. */
@@ -111,22 +111,27 @@
   <div class="card">
     <a class="play" href="play/">PLAY IN THE BROWSER</a>
     <div class="caption">OR DOWNLOAD THE GAME</div>
-    <!-- Served from this site, put there by deploy/deploy.ps1 with every version deployed
-         (docs/releases.md). Linux and macOS were built by a GitHub workflow, gone with GitHub. -->
-    <a class="download" data-os="windows" href="downloads/star-racer-windows-x86_64.zip">
-      <strong>Windows</strong><span>64-bit · .zip</span>
+    <!-- The latest GitHub release's files, under names that never change (docs/releases.md): the
+         Windows installer, which keeps the game up to date (docs/installer.md), and the Linux
+         build. macOS waits for GitHub to have a Mac free when a version is released. -->
+    <a class="download" data-os="windows"
+       href="https://github.com/star-racer/star-racer/releases/latest/download/StarRacer-win-Setup.exe">
+      <strong>Windows</strong><span>64-bit · installer</span>
     </a>
-    <div class="download unavailable" data-os="linux">
-      <strong>Linux</strong><span>coming back soon</span>
-    </div>
+    <a class="download" data-os="linux"
+       href="https://github.com/star-racer/star-racer/releases/latest/download/star-racer-linux-x86_64.tar.gz">
+      <strong>Linux</strong><span>64-bit · .tar.gz</span>
+    </a>
     <div class="download unavailable" data-os="macos">
       <strong>macOS</strong><span>coming back soon</span>
     </div>
     <p class="note">
-      One file to run, nothing to install: unpack it and start <code>star-racer-client</code>.
-      It plays on the same server as this site, with a gamepad, a keyboard or both. The build is
-      not signed: Windows asks before running it the first time ("More info", then "Run anyway").
-      On Linux and macOS, the browser version runs the same game, against the same players.
+      On Windows, run the installer: the game installs for you alone in a few seconds, asks for
+      no administrator, puts Star Racer in the Start menu and on the desktop, and updates itself
+      when a new version comes out. The build is not signed yet: Windows asks before running the
+      installer the first time ("More info", then "Run anyway"). On Linux, unpack it and start
+      <code>star-racer-client</code>. It plays on the same server as this site, with a gamepad, a
+      keyboard or both; on macOS, the browser version runs the same game, against the same players.
     </p>
   </div>
   <!-- The game server, with its data: the circuits and the car's tuning (since v0.1.14, the user's

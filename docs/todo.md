@@ -53,8 +53,8 @@ the French will go through (`client/src/i18n.rs`, only QUICK PLAY translated yet
    - the logos, done in v1.0.0-rc5 (docs/logo.md): the studio's, the ring with a gamepad from
      above, and the game's, the ring with a car from the side, which is the favicon and the
      program's icon (not deployed yet: the site still shows the old favicon);
-   - a modern Windows installer;
-   - an auto-updater;
+   - a modern Windows installer and an auto-updater, done in v1.0.0-rc6 by Velopack
+     (docs/installer.md), to be seen working once a release is built with them;
    - a richer, more detailed ULTRA, more graphics levels, and a VERY LOW that is geometrically
      very simple yet fair: the simulation, and what a player can see of the road and the other
      cars, the same at every level, so no level gives an edge.

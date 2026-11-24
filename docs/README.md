@@ -25,4 +25,5 @@ the current status; these pages explain *why* the code looks the way it does.
 - [The film](film.md) — the game filming itself, the takes, the acid techno and the cut, the short for Discord, and the 15-second trailer.
 - [Releases and downloads](releases.md) — a GitHub release for every deployed version, and the download page.
 - [The logos](logo.md) — the studio's and the game's, on the user's ring, and how they become the icons.
+- [The installer and the updates](installer.md) — the Windows installer, and how an installed game updates itself.
 - [Continuous integration](ci.md) — the four checks, the deployment, and why it could not exist before.
