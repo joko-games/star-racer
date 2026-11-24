@@ -1,0 +1,209 @@
+// Cascade (v0.1.4): a mountain road through the city rather than a circuit, 34 m from wall to
+// wall and 5.17 km round. It climbs a mountainside of the city in five banked hairpins to a
+// summit 119 m up, leaps off it, comes down in steps, threads a walled canyon and runs home
+// through the valley at the bottom of the lap, the city rising on every side.
+//
+//   the launch           out of the line, east, through the city
+//   the ridge            a fast S toward the foot of the mountain
+//   the switchbacks      five hairpins, banked 30 degrees, climbing from 32 to 110 m between
+//                        districts stacked up the slope, a tower in every hairpin
+//   the summit           along the crest, and the leap: 95 m missing, the road taking up
+//                        again 22 m lower, between two monoliths
+//   the cascade          down in steps, meandering west: 24 m and 28 m missing, hops
+//   the falls            140 m missing on the long straight down: the thruster's
+//   the bend             a banked left at the foot of the falls
+//   the canyon           south, pinched to 22 m between walls of the city, through a chicane
+//   the corner           a banked left into the valley, the lowest part of the lap
+//   the valley           a long sweep east through the middle of the city
+//   the lasso            a tight loop out to the right and back
+//   the run home         the starting grid sits along it
+//
+// The shortcut (docs/tracks.md#cascade): the lasso leaves its line and comes back to it, so a car
+// that flies straight on over the wall on the thruster, from the end of the straight before it,
+// lands on the road coming back, about 430 m skipped. No checkpoint stands inside it.
+//
+// The turn angles add up to one full turn to the left; the two lengths marked A and B were
+// solved for so the loop closes. The format is described in docs/tracks.md.
+(
+    name: "Cascade",
+    width: 34.0,
+    segments: [
+        // The launch.
+        Straight(length: 200.0),
+        // The ridge.
+        Turn(angle: 30.0, radius: 150.0, transition: 30.0, banking: 10.0),
+        Turn(angle: -55.0, radius: 130.0, transition: 30.0, banking: 14.0),
+        Turn(angle: 25.0, radius: 150.0, transition: 30.0, banking: 10.0),
+        Straight(length: 60.0),
+        // The switchbacks: five hairpins up the mountain.
+        Turn(angle: 180.0, radius: 46.0, transition: 22.0, banking: 30.0),
+        Straight(length: 210.0),
+        Turn(angle: -180.0, radius: 44.0, transition: 22.0, banking: 30.0),
+        Straight(length: 150.0),
+        Turn(angle: 180.0, radius: 50.0, transition: 22.0, banking: 30.0),
+        Straight(length: 230.0),
+        Turn(angle: -180.0, radius: 44.0, transition: 22.0, banking: 30.0),
+        Straight(length: 170.0),
+        Turn(angle: 180.0, radius: 48.0, transition: 22.0, banking: 30.0),
+        Straight(length: 150.0),
+        // The summit, and the leap.
+        Straight(length: 140.0),
+        // The cascade, down in steps.
+        Turn(angle: 35.0, radius: 120.0, transition: 25.0, banking: 12.0),
+        Straight(length: 90.0),
+        Turn(angle: -65.0, radius: 140.0, transition: 30.0, banking: 16.0),
+        Straight(length: 120.0),
+        Turn(angle: 50.0, radius: 100.0, transition: 25.0, banking: 16.0),
+        Straight(length: 60.0),
+        // The falls.
+        Turn(angle: -20.0, radius: 140.0, transition: 25.0, banking: 8.0),
+        Straight(length: 260.0),
+        // The bend.
+        Turn(angle: 90.0, radius: 64.0, transition: 26.0, banking: 26.0),
+        // The canyon, and its chicane.
+        Straight(length: /*A*/60.87),
+        Turn(angle: -45.0, radius: 60.0, transition: 20.0, banking: 12.0),
+        Turn(angle: 90.0, radius: 60.0, transition: 20.0, banking: 20.0),
+        Turn(angle: -45.0, radius: 60.0, transition: 20.0, banking: 12.0),
+        Straight(length: 40.0),
+        // The corner, and the valley.
+        Turn(angle: 90.0, radius: 64.0, transition: 26.0, banking: 28.0),
+        Turn(angle: 25.0, radius: 170.0, transition: 30.0, banking: 10.0),
+        Turn(angle: -25.0, radius: 170.0, transition: 30.0, banking: 10.0),
+        Straight(length: 40.0),
+        // The lasso.
+        Turn(angle: -108.0, radius: 40.0, transition: 20.0, banking: 20.0),
+        Straight(length: 25.0),
+        Turn(angle: 216.0, radius: 52.0, transition: 26.0, banking: 30.0),
+        Straight(length: 25.0),
+        Turn(angle: -108.0, radius: 40.0, transition: 20.0, banking: 20.0),
+        Straight(length: /*B*/140.58),
+        // The run home. The starting grid sits along it.
+        Straight(length: 200.0),
+    ],
+    elevation: [
+        (at: 0.0, height: 22.0), (at: 200.0, height: 22.0), (at: 410.0, height: 26.0),
+        (at: 618.8, height: 32.0), (at: 785.3, height: 36.0), (at: 995.3, height: 52.0),
+        (at: 1155.5, height: 56.0), (at: 1305.5, height: 68.0), (at: 1484.6, height: 72.0),
+        (at: 1714.6, height: 90.0), (at: 1874.8, height: 94.0), (at: 2044.8, height: 106.0),
+        (at: 2217.6, height: 110.0), (at: 2397.6, height: 116.0), (at: 2492.6, height: 94.0),
+        (at: 2507.6, height: 90.0), (at: 2625.9, height: 82.0), (at: 2649.9, height: 76.0),
+        (at: 2695.9, height: 72.0), (at: 2946.8, height: 64.0), (at: 2974.8, height: 57.0),
+        (at: 3004.8, height: 54.0), (at: 3177.0, height: 46.0), (at: 3282.0, height: 44.0),
+        (at: 3427.0, height: 22.0), (at: 3510.9, height: 20.0), (at: 3637.4, height: 16.0),
+        (at: 3838.3, height: 12.0), (at: 3986.8, height: 10.0), (at: 4113.3, height: 8.0),
+        (at: 4243.3, height: 8.0), (at: 4361.7, height: 10.0), (at: 4587.7, height: 14.0),
+        (at: 4813.7, height: 12.0), (at: 4965.1, height: 20.0),
+    ],
+    // The canyon, pinched to 22 m.
+    narrows: [
+        (at: 3647.4, length: 270.0, width: 22.0, blend: 30.0),
+    ],
+    // Where the road is missing (docs/tracks.md#gaps): the summit leap and the falls are the
+    // thruster's, the two steps of the cascade a hop's.
+    gaps: [
+        (at: 2397.6, length: 95.0),
+        (at: 2625.9, length: 24.0),
+        (at: 2946.8, length: 28.0),
+        (at: 3287.0, length: 140.0),
+    ],
+    // The gates a lap passes in order (docs/tracks.md#checkpoints): one before every gap, none
+    // inside the lasso.
+    checkpoints: [558.8, 1305.5, 1874.8, 2337.6, 2559.6, 2759.9, 3227.0, 3540.9, 3946.8, 4321.7, 4925.1],
+    // Speed pads: off the line, into the leap, into the falls, along the valley and onto the
+    // run home.
+    pads: [
+        (at: 100.0, lateral: 6.0),
+        (at: 2362.6, lateral: 0.0),
+        (at: 3257.0, lateral: 0.0),
+        (at: 4203.3, lateral: -7.0),
+        (at: 4945.1, lateral: 0.0),
+    ],
+    // The city stands on every side: stacked up the mountain between the legs of the
+    // switchbacks, walling in the canyon, filling the inside of the lap below the cascade.
+    scenery: [
+        // The line, between two stands, and the city south of the launch.
+        Grandstand(at: 5075.1, side: Right, offset: 4.0, length: 80.0, rows: 8),
+        Grandstand(at: 5090.1, side: Left, offset: 4.0, length: 60.0, rows: 6),
+        Skyline(at: 5005.1, side: Right, offset: 8.0, length: 160.0, depth: 70.0, height: 36.0),
+        Skyline(at: 0.0, side: Right, offset: 8.0, length: 220.0, depth: 80.0, height: 40.0),
+        Billboard(at: 120.0, side: Left, offset: 3.0),
+        // The ridge, toward the foot of the mountain.
+        Chevrons(at: 192.0, side: Right),
+        Skyline(at: 220.0, side: Right, offset: 8.0, length: 240.0, depth: 90.0, height: 44.0),
+        Pylon(at: 400.0, side: Left, offset: 2.0, height: 18.0),
+        // The switchbacks: a mountain of the city, a district stacked between every two legs, each
+        // higher than the one below, a tower in every hairpin and a taller one outside it.
+        Skyline(at: 785.3, side: Left, offset: 6.0, length: 200.0, depth: 60.0, height: 30.0),
+        Skyline(at: 785.3, side: Right, offset: 6.0, length: 200.0, depth: 50.0, height: 34.0),
+        Skyline(at: 1155.5, side: Left, offset: 6.0, length: 150.0, depth: 50.0, height: 36.0),
+        Skyline(at: 1484.6, side: Right, offset: 6.0, length: 220.0, depth: 50.0, height: 40.0),
+        Skyline(at: 1874.8, side: Left, offset: 6.0, length: 170.0, depth: 50.0, height: 44.0),
+        Chevrons(at: 612.8, side: Right),
+        Tower(at: 702.0, side: Left, offset: 5.0, height: 46.0, width: 18.0, depth: 18.0),
+        Tower(at: 702.0, side: Right, offset: 14.0, height: 64.0, width: 26.0, depth: 26.0),
+        Chevrons(at: 989.3, side: Left),
+        Tower(at: 1075.4, side: Right, offset: 4.0, height: 50.0, width: 18.0, depth: 18.0),
+        Tower(at: 1075.4, side: Left, offset: 14.0, height: 70.0, width: 24.0, depth: 24.0),
+        Chevrons(at: 1299.5, side: Right),
+        Tower(at: 1395.1, side: Left, offset: 6.0, height: 54.0, width: 20.0, depth: 20.0),
+        Tower(at: 1395.1, side: Right, offset: 14.0, height: 74.0, width: 26.0, depth: 26.0),
+        Chevrons(at: 1708.6, side: Left),
+        Tower(at: 1794.7, side: Right, offset: 4.0, height: 56.0, width: 18.0, depth: 18.0),
+        Tower(at: 1794.7, side: Left, offset: 14.0, height: 80.0, width: 24.0, depth: 24.0),
+        Chevrons(at: 2038.8, side: Right),
+        Tower(at: 2131.2, side: Left, offset: 6.0, height: 60.0, width: 20.0, depth: 20.0),
+        Tower(at: 2131.2, side: Right, offset: 14.0, height: 86.0, width: 26.0, depth: 26.0),
+        // The summit: the last leg along the crest, two monoliths over the leap, masts at its lip
+        // and a stand where the road takes up again.
+        Skyline(at: 2217.6, side: Right, offset: 10.0, length: 240.0, depth: 90.0, height: 50.0),
+        Billboard(at: 2287.6, side: Left, offset: 3.0),
+        Pylon(at: 2393.6, side: Left, offset: 1.0, height: 20.0),
+        Pylon(at: 2393.6, side: Right, offset: 1.0, height: 20.0),
+        Monolith(at: 2442.6, side: Left, offset: 34.0, height: 70.0, width: 14.0),
+        Monolith(at: 2452.6, side: Right, offset: 44.0, height: 60.0, width: 12.0),
+        Grandstand(at: 2495.6, side: Right, offset: 4.0, length: 60.0, rows: 8),
+        // The cascade: down in steps, the city of the inside of the lap below on the left.
+        Chevrons(at: 2501.6, side: Right),
+        Facade(at: 2527.6, side: Right, offset: 4.0, length: 90.0, height: 22.0),
+        Pylon(at: 2650.9, side: Left, offset: 1.0, height: 14.0),
+        Pylon(at: 2650.9, side: Right, offset: 1.0, height: 14.0),
+        Chevrons(at: 2689.9, side: Left),
+        Skyline(at: 2695.9, side: Right, offset: 8.0, length: 240.0, depth: 80.0, height: 46.0),
+        Pylon(at: 2975.8, side: Left, offset: 1.0, height: 14.0),
+        Pylon(at: 2975.8, side: Right, offset: 1.0, height: 14.0),
+        Chevrons(at: 2998.8, side: Right),
+        Facade(at: 3014.8, side: Left, offset: 4.0, length: 100.0, height: 18.0),
+        Chevrons(at: 3171.0, side: Left),
+        // The falls: a monolith standing in the void on either side, masts and a stand at the foot.
+        Billboard(at: 3237.0, side: Right, offset: 3.0),
+        Monolith(at: 3347.0, side: Left, offset: 40.0, height: 56.0, width: 14.0),
+        Monolith(at: 3367.0, side: Right, offset: 50.0, height: 48.0, width: 12.0),
+        Pylon(at: 3429.0, side: Left, offset: 1.0, height: 18.0),
+        Pylon(at: 3429.0, side: Right, offset: 1.0, height: 18.0),
+        Grandstand(at: 3435.0, side: Right, offset: 4.0, length: 50.0, rows: 8),
+        Chevrons(at: 3504.9, side: Right),
+        // The canyon: walled in on both sides by the city, and its chicane.
+        Facade(at: 3642.4, side: Left, offset: 1.0, length: 140.0, height: 40.0, depth: 16.0),
+        Facade(at: 3782.4, side: Left, offset: 1.0, length: 140.0, height: 46.0, depth: 16.0),
+        Facade(at: 3642.4, side: Right, offset: 1.0, length: 140.0, height: 44.0, depth: 16.0),
+        Facade(at: 3782.4, side: Right, offset: 1.0, length: 140.0, height: 38.0, depth: 16.0),
+        Chevrons(at: 3980.8, side: Right),
+        // The valley, the bottom of the lap, the city rising on the left toward the cascade.
+        Skyline(at: 4113.3, side: Right, offset: 8.0, length: 240.0, depth: 90.0, height: 40.0),
+        Skyline(at: 4113.3, side: Left, offset: 8.0, length: 200.0, depth: 240.0, height: 60.0),
+        Skyline(at: 4313.3, side: Left, offset: 8.0, length: 200.0, depth: 240.0, height: 70.0),
+        Skyline(at: 4513.3, side: Left, offset: 8.0, length: 200.0, depth: 240.0, height: 66.0),
+        Billboard(at: 4233.3, side: Left, offset: 3.0),
+        // The lasso, its inside left to the dark: the ground a shortcut flies over.
+        Chevrons(at: 4355.7, side: Left),
+        Grandstand(at: 4543.1, side: Right, offset: 4.0, length: 100.0, rows: 8),
+        Skyline(at: 4443.1, side: Right, offset: 8.0, length: 150.0, depth: 70.0, height: 36.0),
+        Skyline(at: 4745.1, side: Left, offset: 8.0, length: 220.0, depth: 160.0, height: 60.0),
+        // Far out in the dark.
+        Monolith(at: 2297.6, side: Right, offset: 150.0, height: 60.0),
+        Monolith(at: 3757.4, side: Right, offset: 130.0, height: 44.0),
+        Monolith(at: 4273.3, side: Right, offset: 170.0, height: 50.0),
+        Monolith(at: 1395.5, side: Right, offset: 140.0, height: 54.0),
+    ],
+)

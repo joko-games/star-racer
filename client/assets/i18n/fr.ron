@@ -1,0 +1,6 @@
+// The game in French (docs/ui.md#languages): each English text, as the code writes it, and its
+// French. A text missing here shows in English. `{name}` stands for a value the game fills in, and
+// must stay in the translation, as it is.
+{
+    "QUICK PLAY": "PARTIE RAPIDE",
+}

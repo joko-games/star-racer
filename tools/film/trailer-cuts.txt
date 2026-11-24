@@ -1,0 +1,18 @@
+# The trailer's shots, cut on the half bars of 140 BPM (0.857 s): take, start in seconds, length in
+# half bars, caption (underscores for spaces, - for none). 14 half bars, then the title over 3.5.
+# The build: the lights and the start.
+a 2.6 2 16_RACERS
+a 5.0 2 NO_BRAKES
+# The drop: the summit leap, then a cut on every half bar.
+a 41.6 2 FLY
+a 52.0 1 -
+a 16.0 1 DRIFT
+a 30.0 1 300_KM/H
+a 58.0 1 -
+a 44.0 1 -
+a 62.0 1 -
+a 68.4 1 -
+a 25.5 1 NEW_CIRCUIT_·_CASCADE
+a 33.5 1 -
+# The title, over the car past the line.
+a 79.0 3.5 -

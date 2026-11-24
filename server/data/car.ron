@@ -1,0 +1,239 @@
+// Car tuning. The server checks this file every second while it runs: edit, save, keep driving.
+// An invalid file is reported in the server log and ignored. See docs/simulation.md.
+(
+    // Speeds in m/s (58 m/s = 209 km/h), accelerations in m/s². No brake: full speed all the time,
+    // and letting go of the accelerator only coasts. The car is heavy: it takes its time getting up
+    // to speed, and keeps what a dive or a boost gives it beyond top speed. The acceleration fades
+    // out toward top speed, so top_speed / acceleration is how heavy it feels: 2.5 s, reaching 95%
+    // of top speed in 7.5 s whatever the top speed. 40 and 16 until v0.1.34, 45 and 18 in v0.1.35.
+    top_speed: 58.0,
+    acceleration: 23.2,
+    coasting: 3.0,
+    // Per second: how quickly speed above top_speed fades, as a share of the excess. At 0.5 a dive
+    // carries the car past top speed and a boost lingers; at 4 the excess is gone in about a
+    // second; 0 keeps it for good.
+    // 0.5 until v0.1.43; at 0.35 the car holds what it was given longer, which is weight: from a
+    // boost's 75 m/s, 70 a second later and 64 three seconds later.
+    overspeed_drag: 0.35,
+
+    // Turning radius at full lock, in meters: when slow, and at top speed. 32 at top speed until
+    // v0.1.36; at 58 m/s that turned and slid so hard that half lock broke into a drift.
+    turn_radius_slow: 6.0,
+    turn_radius_fast: 38.0,
+    // The car always steers at least as if it went this fast (m/s), so it can turn away from a wall
+    // it is stuck against.
+    min_steering_speed: 4.0,
+    // Per second: how quickly the steering follows the stick. It moves on the very tick the stick
+    // does and eases in as it gets there, so the car turns at once, gently, then a little harder;
+    // at 14, most of the way in 0.15 s. Lower is softer, higher is sharper.
+    steering_rate: 14.0,
+    // Degrees per second per second: the car's weight. Its rotation changes no faster than this,
+    // gathering steadily from the very tick the steering moves and dying away the same way when the
+    // stick lets go, so the car carries on round a little. Small corrections never meet it; a full
+    // turn of the wheel and a slalom do. Higher is lighter: from about 1500 it holds nothing back.
+    // 250 until v0.1.43; at 200 the rotation takes a quarter longer to gather and to die.
+    yaw_acceleration: 200.0,
+    // Per second: how quickly sliding dies out while gripping. Lower lets the car's weight carry it
+    // further to the outside of a turn before it follows its nose. Drifting is not affected: a
+    // drift goes where the stick says. At 11.6 the travel trails the nose by 3.4 degrees at half
+    // lock at top speed. A faster car slides further at the same grip, so it rose with the top
+    // speed: 9 at 45 m/s (v0.1.32 to v0.1.35); at 6 (v0.1.14 to v0.1.31) the travel trailed 8.4
+    // degrees at three quarters lock and 40 m/s, which carried the car out.
+    // Since v0.1.44 the grip is high on purpose, 30: the travel trails the nose by 1.1 degrees at
+    // half lock where it trailed 3.4 at 11.6, so the car goes where it points instead of being
+    // carried out. What the player sees of a hard turn is the nose unscrewing (grip_swing_angle),
+    // not the car drifting wide.
+    grip: 30.0,
+    // Pull down the slopes of the road, in m/s² (9.81 is Earth's): it slows a climb, speeds a dive
+    // and draws the car to the inside of a banked turn. 0 makes the relief and the banking purely
+    // visual.
+    gravity: 9.81,
+
+    // Drift, as in Rocket Racing: a tap of the drift button with the stick turned throws the car
+    // into a drift, and so does turning hard enough to break away. The stick then sets the curve
+    // the car travels on, the body swings far across it without carrying the car wide, the speed
+    // holds and a charge builds up. Bringing the body back into line, stick centered or against
+    // the drift, ends it and turns the charge into a boost.
+    // How far a gripping car's nose must unscrew into a turn to break into a drift without the
+    // button, in degrees, and how far it unscrews at full lock at top speed while it still grips
+    // (grip_swing_angle): the body swings off the travel, tail out, in proportion to how hard the
+    // car turns, carrying it nowhere. With 11 and 16, half lock unscrews 8 degrees and holds, six
+    // tenths 9; three quarters lock and full lock break away after 0.37 s (0.53 s and 0.47 s with
+    // the slower swing of v0.1.44 to v0.1.54). Before v0.1.44 the car broke away when its real
+    // slide passed 5 degrees, which carried it out on the way there.
+    drift_entry_angle: 11.0,
+    grip_swing_angle: 16.0,
+    // How far the body swings across the travel with the steering fully into the drift, in
+    // degrees, most of it with the first half of the steering. 55 (measured on Rocket Racing) threw
+    // the car across too far for the user in v0.1.31, then 42 (v0.1.32 and v0.1.33) still carried
+    // it across too fast, and 36 (v0.1.35 to v0.1.54) was barely seen to pivot.
+    // Since v0.1.55, the car is seen pivoting on its axis (docs/simulation.md#a-pivot-not-a-sharper-turn):
+    // 55 degrees across again, swung at up to 140 degrees per second (36 and 45 in v0.1.54); since
+    // v1.0.0-rc1 at up to 100, gathering at 260 (400 before) and thrown at 130 (200), at the
+    // user's word "alourdis encore plus, fais encore plus patiner, et moins déporter vite sur le
+    // coté": tapped, the body is 11 degrees out at 0.1 s, 26 at 0.25 s and 48 at 0.5 s (18, 38, 55).
+    drift_angle: 55.0,
+    // How the body swings there and back: it comes off the travel on the very tick the drift
+    // starts, slowly, its swing gathering speed at this many degrees per second per second, up to
+    // the fastest swing, in degrees per second, and slowing the same way to stop on its angle.
+    // Broken into at full lock from top speed, the body is 8 degrees out at 0.25 s, 23 at 0.5 s
+    // and 50 at 0.75 s; thrown, drift_kick_swing sets it off faster. The fastest swing only
+    // matters carrying a drift over to the other side in an S: 0.82 s to swing 45 degrees past
+    // the line, 0.77 s with no limit. The knee of v0.1.37 to v0.1.56 (drift_swing_knee,
+    // drift_swing_knee_rate) went in v0.1.57: at 55 degrees and 400 the body never swung fast
+    // enough past it for it to change anything.
+    drift_swing_acceleration: 260.0,
+    drift_swing_rate: 100.0,
+    // Radius of the curve the car drifts on with the stick fully to one side and the body swung
+    // fully out, in meters: the curve tightens from the gripping car's to this one as the body
+    // swings out. The stick is signed: centered runs straight and against the drift turns the
+    // other way. The car goes where the stick says; it does not run wide. 26 until v0.1.36.
+    // Since v0.1.55, 44: the path turns at 75 degrees per second at top speed where 30 turned it at
+    // 111, the user finding it turned too fast. Since v1.0.0-rc1, 52: about 65 degrees per second.
+    drift_radius_tight: 52.0,
+    // Holding the drift button multiplies the drift radius by this: it tightens the turn beyond
+    // what the stick alone gives. Held with the stick well against the drift, it carries the drift
+    // over to the other side, charge and all, through an S.
+    // 0.7 until v0.1.77: held, the drift turned at 105 degrees a second, the user finding it threw
+    // the car to the side so fast nobody wanted to hold it. Now it tightens a little.
+    drift_button_tighten: 0.9,
+    // What holding the button costs, in m/s² when it is pressed, then that much more per second it
+    // stays held: a drift costs nothing, tightening it does, harder and harder.
+    // 1.5 and 0.5 until v0.1.77: holding braked, so it cost speed and paid nothing. Now it costs
+    // nothing for its first seconds and only a little after.
+    drift_button_drag: 0.0,
+    drift_button_drag_ramp: 0.25,
+    // Since v0.1.78, the user's word "forcer le drift [...] doit etre une mechanic centrale pour
+    // faire du boost/vitesse": held, a drift charges this many times faster, and its body swings
+    // out to this share of drift_angle, under control rather than thrown across.
+    drift_button_charge: 1.7,
+    drift_button_angle: 0.65,
+    // Seconds a press of the drift button is remembered: pressed a moment before the stick is
+    // turned, or before the car is fast enough, it still starts the drift. 0.15 until v0.1.34.
+    drift_press_buffer: 0.25,
+    // Charge before any boost (s), seconds of boost per second of charge beyond it, and the
+    // longest boost (s). The charge grows from half to one and a half times real time, tighter drifts
+    // faster, and drift_button_charge times faster with the button held, so the full boost, 3.7 s of
+    // charge since v0.1.78, takes about 1.5 s of drift held at full lock, 2.5 s tapped.
+    drift_min_charge: 0.3,
+    drift_boost_rate: 0.5,
+    // 1.2 until v0.1.77; longer, so a drift held for long has more to pay.
+    drift_max_boost: 1.7,
+    // Seconds of boost a speed pad on the track gives, counted from when the car leaves it, toward
+    // boost_top_speed like a drift's (see docs/tracks.md#speed-pads).
+    pad_boost: 0.8,
+    // Boost: top speed (m/s, 75 = 270 km/h, three tenths above top_speed) and acceleration (m/s²),
+    // in full up to top_speed and fading out above it. After it, the car keeps its momentum: the
+    // speed above top_speed fades at overspeed_drag.
+    boost_top_speed: 75.0,
+    boost_acceleration: 65.0,
+    // Boost for a perfect start (s), pressing the accelerator right at the start. Grades from S to
+    // E give from all of it to none.
+    start_boost: 1.5,
+
+    // Turbo: a meter of three charges that drifting fills, a charge spent at a press of the turbo
+    // button on a boost stronger and longer than a drift's.
+    // Charges filled per second of drift charge: at 0.2, a charge for every five seconds of
+    // charge, which a tight drift builds in a little over three.
+    turbo_fill: 0.2,
+    // What a charge gives: seconds of boost, its top speed (m/s, 87 = 313 km/h, half as much again
+    // as top_speed) and its acceleration (m/s²), fading out toward that top speed as a boost's
+    // does.
+    turbo_seconds: 2.0,
+    turbo_top_speed: 87.0,
+    turbo_acceleration: 80.0,
+
+    // The jump, as in Rocket Racing (docs/simulation.md#the-jump, #hop-then-thrust). A press of
+    // the jump lifts the car off the road at jump_speed (m/s); air_gravity (m/s²) brings it back,
+    // stronger than the road's gravity so a hop is short and snappy: at 16 and 70 (14 until v0.1.5,
+    // the user's word "Le jump doit nous faire monter un peu plus haut"; 10 and 50 until
+    // v1.0.0-rc1), 1.8 m up in 0.23 s and 0.46 s in the air (1.4 m in 0.2 s before); thrust_acceleration rose with the
+    // gravity, 140 from 100, to hover as high as before. The thrust held in the air, once the hop has had thrust_delay (s, near the top of the hop; held with
+    // the jump from its press only: Star Fly pressed on its own, on the road or in the air, lights at once),
+    // lights the thruster with a kick, the climb brought up to thrust_kick (m/s), then pushes at
+    // thrust_acceleration (m/s²), less and less toward thrust_ceiling (m), thrust_damping (per
+    // second) holding back its climb so it settles where push and pull meet (about 10 m since
+    // v0.1.69, 5 m before), for as long as the tank holds: thrust_seconds, filled again on the road at
+    // thrust_recharge seconds per second. A full tank flies 4.2 s, about 240 m at top speed. In the air the car feels no slope
+    // and touches no pad, and a drift is held until it lands.
+    jump_speed: 16.0,
+    air_gravity: 70.0,
+    thrust_delay: 0.15,
+    thrust_acceleration: 140.0,
+    thrust_ceiling: 20.0,
+    thrust_seconds: 3.5,
+    thrust_recharge: 1.4,
+    thrust_kick: 7.0,
+    thrust_damping: 4.0,
+
+    // In the air (since v0.1.53): nothing grips, so the travel keeps its direction and follows
+    // the nose at air_grip per second (the road's grip is 30), and the nose turns at air_steering
+    // of what the stick asks on the road. Lower air_grip flies straighter whatever the stick does;
+    // higher steers in the air. Since v0.1.69, 5 and 0.9 (2.5 and 0.5 before): the user asked to
+    // steer more in the air.
+    air_grip: 5.0,
+    air_steering: 0.9,
+
+    // The Star Dash (since v0.1.70): a press with the stick to a side throws the car at the wall on
+    // that side at dash_speed (m/s), for at most dash_time (s); with the stick at rest it does a
+    // barrel roll of roll_time (s), drawn only. Another waits dash_wait (s). Since v1.0.0-rc1 only
+    // a wall within dash_reach (m) is dashed to: the car lands on it without the cost of a hit and
+    // stays pressed flat against it, drawn with its wheels on it, for dash_press (s); a wall farther
+    // off makes it a barrel roll toward it that moves the car over for dash_nudge (s).
+    dash_speed: 40.0,
+    dash_time: 0.5,
+    dash_reach: 16.0,
+    dash_press: 0.6,
+    dash_nudge: 0.04,
+    dash_wait: 0.8,
+    roll_time: 0.6,
+
+    // The Air Roll (since v0.1.70), held in the air: the nose turns at air_roll_steering of what the
+    // stick asks on the road and the travel follows it at air_roll_grip per second; the stick
+    // pushed forward dives at air_roll_dive (m/s²), pulled back holds the car up at air_roll_lift
+    // (m/s², under air_gravity: it glides, the thruster alone climbs).
+    air_roll_steering: 1.0,
+    air_roll_grip: 10.0,
+    air_roll_dive: 30.0,
+    air_roll_lift: 35.0,
+
+    // Out of a drift (since v0.1.53): this share of the body's angle across the travel becomes a
+    // real slide the grip takes up, so the travel comes round toward the nose as the drift ends,
+    // as a car does coming out of a slide, instead of running on straight while the body alone
+    // swings back into line: at 0.3 the travel comes three tenths of the way to the nose, at 0.5
+    // (v0.1.53 and v0.1.54) the two met halfway. 0 is the old way.
+    drift_exit_share: 0.3,
+
+    // Into a drift thrown with the stick turned and the button pressed together (since v0.1.54,
+    // the user's word "on doit avoir un joli coup de braquage avant que ce redevienne lent"): for
+    // drift_kick_time seconds at full lock and top speed, less with a lighter stick, the car's
+    // rotation is nine times lighter than yaw_acceleration lets it be, so it turns in at once;
+    // after it the drift is as slow as ever and the stick tightens or opens it. 0 is no kick.
+    // Until v0.1.56 three numbers (drift_kick, drift_kick_acceleration, drift_kick_fade), whose
+    // only felt effect was that lighter weight (docs/simulation.md#fewer-drift-numbers).
+    drift_kick_time: 0.1,
+    // Since v0.1.55, at the user's word "ça tourne trop vite quand on drift, et on doit vraiment
+    // avoir une rotation de la voiture sur son axe beaucoup plus claire": thrown, the body pivots
+    // on its own axis, swung out at drift_kick_swing degrees per second and braking onto its
+    // angle.
+    drift_kick_swing: 130.0,
+    // Since v1.0.0-rc6, the user's word "Quand on spam le drift en virage, ça doit faire des à-coups
+    // supplémentaires": every new press during a drift, the stick into it, throws the rotation
+    // further in by drift_tap_yaw and the body by drift_tap_swing (degrees per second), and the
+    // car's weight takes them back. A press against the turn ends the drift and straightens the car.
+    drift_tap_yaw: 30.0,
+    drift_tap_swing: 60.0,
+
+    // Walls. The bounce is the share of the impact speed that comes back, from 0 to 1. The impact
+    // friction is the speed along the wall a hit takes, per m/s it takes into it: a graze costs
+    // little, a blow at an angle a lot. The friction slows a car scraping along a wall, per second.
+    collision_radius: 1.2,
+    wall_bounce: 0.1,
+    wall_impact_friction: 0.5,
+    wall_friction: 2.5,
+    // Per second: how quickly a wall turns a car that runs into it along itself, so the car comes
+    // away from it instead of grinding on with its nose in. High, so it is done in a few ticks,
+    // each of which is another hit; the body swings round after it in its own time. 0 leaves the
+    // car pointing where it did.
+    wall_alignment: 60.0,
+)

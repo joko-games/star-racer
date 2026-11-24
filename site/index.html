@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Star Racer — online arcade racing at full speed</title>
+  <meta name="description" content="Star Racer: an online arcade racing game at full speed, with no brakes. Drift to charge a boost, jump and fly over the void, race fifteen others through a neon city at night. In beta, out January 1, 2027. Play in your browser or download it for Windows.">
+  <meta property="og:title" content="Star Racer">
+  <meta property="og:description" content="Online arcade racing at full speed. No brakes. Out January 1, 2027.">
+  <meta property="og:image" content="/img/poster.jpg">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="/favicon.png">
+  <style>
+    /* The game's own font (client/assets/fonts, SIL Open Font License, fonts/OFL.txt), served from
+       here: the site asks nothing of anyone else's server, as the game does not. */
+    @font-face { font-family: Saira; src: url(fonts/Saira.ttf); font-weight: 100 900; font-display: swap; }
+    @font-face { font-family: Saira; src: url(fonts/Saira-Italic.ttf); font-style: italic; font-weight: 100 900; font-display: swap; }
+
+    /* The menus' colors (client/src/ui/theme.rs): black, neon blue, magenta, and the beta's amber. */
+    :root {
+      --background: #000;
+      --panel: rgba(8, 10, 16, 0.86);
+      --border: rgba(26, 155, 255, 0.3);
+      --neon: #1a9bff;
+      --text: #eef2ff;
+      --dim: #9aa6bd;
+      --faint: #66708a;
+      --magenta: #ff4795;
+      --amber: #ffb833;
+      --green: #4df299;
+      --gutter: clamp(16px, 4vw, 48px);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    html, body { margin: 0; }
+    body {
+      background: var(--background);
+      color: var(--text);
+      font-family: Saira, system-ui, sans-serif;
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+    a { color: inherit; }
+    img { display: block; max-width: 100%; }
+
+    /* The bar along the top. */
+    header {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      padding: 12px var(--gutter);
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+    }
+    .brand {
+      font-style: italic;
+      font-weight: 800;
+      font-size: 22px;
+      letter-spacing: -0.5px;
+      text-decoration: none;
+      text-shadow: 2px 2px 0 rgba(26, 155, 255, 0.85);
+      white-space: nowrap;
+    }
+    nav { display: flex; gap: 22px; margin-left: auto; align-items: center; }
+    nav a {
+      color: var(--dim);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    nav a:hover { color: var(--text); }
+    .nav-links { display: flex; gap: 22px; }
+    @media (max-width: 760px) { .nav-links { display: none; } }
+
+    /* Buttons, as the game draws them. */
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 13px 26px;
+      border-radius: 8px;
+      border: 1.5px solid var(--neon);
+      font-weight: 800;
+      font-size: 16px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: box-shadow 0.15s, background 0.15s;
+    }
+    .button.primary { background: var(--neon); color: #01060c; }
+    .button.primary:hover { box-shadow: 0 0 26px rgba(26, 155, 255, 0.75); }
+    .button.secondary { color: var(--text); background: rgba(26, 155, 255, 0.08); }
+    .button.secondary:hover { background: rgba(26, 155, 255, 0.2); }
+    .button.small { padding: 7px 16px; font-size: 13px; letter-spacing: 1.5px; }
+
+    /* The beta's tag: amber, as in the game's beta panel. */
+    .beta {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 4px;
+      background: var(--amber);
+      color: #120a00;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 2px;
+    }
+
+    /* The first screen: the poster behind, the title, the date, the way in. */
+    .hero {
+      position: relative;
+      min-height: 100svh;
+      display: flex;
+      align-items: flex-end;
+      padding: 120px var(--gutter) clamp(48px, 9vh, 96px);
+      overflow: hidden;
+    }
+    .hero .poster {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -2;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background:
+        linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.55) 45%, rgba(0, 0, 0, 0.2) 75%, rgba(0, 0, 0, 0.6) 100%),
+        radial-gradient(ellipse at 20% 100%, rgba(26, 155, 255, 0.25), transparent 60%);
+    }
+    .hero-inner { max-width: 760px; }
+    h1 {
+      margin: 10px 0 0;
+      font-style: italic;
+      font-weight: 800;
+      font-size: clamp(56px, 13vw, 140px);
+      line-height: 0.95;
+      letter-spacing: -2px;
+      text-shadow: 6px 6px 0 rgba(26, 155, 255, 0.85);
+    }
+    .tagline {
+      margin: 14px 0 0;
+      font-size: clamp(18px, 2.6vw, 24px);
+      color: var(--text);
+      font-weight: 500;
+    }
+    .tagline strong { color: var(--neon); font-weight: 700; }
+    .release {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 6px 18px;
+      margin: 26px 0 0;
+    }
+    .release .date {
+      font-style: italic;
+      font-weight: 800;
+      font-size: clamp(26px, 4vw, 38px);
+      color: var(--magenta);
+      text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.8);
+    }
+    .countdown { display: flex; gap: 14px; font-variant-numeric: tabular-nums; }
+    .countdown div { display: flex; flex-direction: column; align-items: center; min-width: 46px; }
+    .countdown b { font-size: 26px; font-weight: 700; line-height: 1.1; }
+    .countdown span { font-size: 11px; letter-spacing: 2px; color: var(--dim); text-transform: uppercase; }
+    .actions { display: flex; flex-wrap: wrap; gap: 14px; margin: 30px 0 0; }
+    .note { margin: 14px 0 0; color: var(--dim); font-size: 14px; }
+
+    /* Sections below. */
+    section { padding: clamp(56px, 10vh, 110px) var(--gutter); }
+    .section-head { max-width: 1180px; margin: 0 auto 36px; }
+    h2 {
+      margin: 0;
+      font-style: italic;
+      font-weight: 800;
+      font-size: clamp(34px, 5vw, 54px);
+      letter-spacing: -1px;
+      text-shadow: 4px 4px 0 rgba(26, 155, 255, 0.7);
+    }
+    .lead { margin: 10px 0 0; color: var(--dim); font-size: 18px; max-width: 720px; }
+
+    .features {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+    }
+    .feature {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .feature img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+    .feature .body { padding: 16px 18px 20px; }
+    .feature h3 { margin: 0; font-size: 20px; font-weight: 700; }
+    .feature h3 em { color: var(--neon); font-style: normal; }
+    .feature p { margin: 6px 0 0; color: var(--dim); font-size: 15px; }
+    .feature.text-only { padding: 18px; }
+
+    .circuits {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .circuit {
+      position: relative;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      min-height: 320px;
+      display: flex;
+      align-items: flex-end;
+    }
+    .circuit img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+    .circuit::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.92) 10%, rgba(0, 0, 0, 0.1) 70%);
+    }
+    .circuit .body { padding: 22px; }
+    .circuit h3 {
+      margin: 0;
+      font-style: italic;
+      font-weight: 800;
+      font-size: 34px;
+      text-shadow: 3px 3px 0 rgba(26, 155, 255, 0.8);
+    }
+    .circuit .facts { margin: 2px 0 0; color: var(--neon); font-weight: 600; letter-spacing: 1px; font-size: 14px; }
+    .circuit p { margin: 8px 0 0; color: var(--dim); }
+    .new { color: var(--green); font-size: 13px; letter-spacing: 2px; font-weight: 700; vertical-align: middle; margin-left: 8px; font-style: normal; text-shadow: none; }
+
+    /* The beta: framed in amber, as the game's beta panel is. */
+    .beta-box {
+      max-width: 1180px;
+      margin: 0 auto;
+      position: relative;
+      border: 1.5px solid rgba(255, 184, 51, 0.7);
+      border-radius: 12px;
+      background: rgba(18, 12, 0, 0.6);
+      padding: 30px clamp(18px, 4vw, 40px);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px 40px;
+    }
+    .beta-box > .beta { position: absolute; top: -12px; left: 22px; }
+    .beta-box h2 { text-shadow: 4px 4px 0 rgba(255, 184, 51, 0.45); }
+    .beta-box p { color: var(--dim); margin: 10px 0 0; }
+    .beta-box ul { margin: 0; padding-left: 20px; color: var(--dim); }
+    .beta-box li { margin: 6px 0; }
+    .beta-box li b { color: var(--text); }
+
+    .platforms {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+    }
+    .platforms .chip {
+      padding: 10px 18px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--dim);
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+
+    footer {
+      padding: 40px var(--gutter) 50px;
+      border-top: 1px solid rgba(26, 155, 255, 0.15);
+      color: var(--faint);
+      font-size: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 28px;
+      justify-content: space-between;
+    }
+    footer a { color: var(--dim); }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">STAR RACER</a>
+    <nav>
+      <span class="nav-links">
+        <a href="#features">The game</a>
+        <a href="#circuits">Circuits</a>
+        <a href="#beta">Beta</a>
+        <a href="download.html">Download</a>
+      </span>
+      <a class="button primary small" href="play/">Play</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <img class="poster" src="img/poster.jpg" alt="">
+      <div class="hero-inner">
+        <span class="beta">BETA</span>
+        <h1>STAR RACER</h1>
+        <p class="tagline">Online arcade racing at full speed. <strong>No brakes.</strong> Drift to charge a boost, jump and fly over the void, race fifteen others through a neon city at night.</p>
+        <div class="release">
+          <span class="date">Out January 1, 2027</span>
+          <div class="countdown" id="countdown" aria-label="Time left before the release">
+            <div><b id="days">–</b><span>days</span></div>
+            <div><b id="hours">–</b><span>hours</span></div>
+            <div><b id="minutes">–</b><span>min</span></div>
+            <div><b id="seconds">–</b><span>sec</span></div>
+          </div>
+        </div>
+        <div class="actions">
+          <a class="button primary" href="play/">Play in your browser</a>
+          <a class="button secondary" href="download.html">Download</a>
+        </div>
+        <p class="note">Free, in beta now. Keyboard, gamepad or touch: nothing to install in the browser.</p>
+      </div>
+    </div>
+
+    <section id="features">
+      <div class="section-head">
+        <h2>The game</h2>
+        <p class="lead">Every race is at full speed, and it is all about keeping it: hold the line, drift through the turns, take off where the road ends.</p>
+      </div>
+      <div class="features">
+        <article class="feature">
+          <img src="img/drift.jpg" alt="A car drifting through a turn, its trails glowing behind it">
+          <div class="body">
+            <h3><em>Star</em> Drift</h3>
+            <p>Throw the car sideways into a turn. The longer you hold the slide, the bigger the boost when you straighten out.</p>
+          </div>
+        </article>
+        <article class="feature">
+          <img src="img/flight.jpg" alt="A car flying on its thruster over the void between two parts of the road">
+          <div class="body">
+            <h3><em>Star</em> Jump &amp; Fly</h3>
+            <p>Hop, then light the thruster and fly over the gaps in the road, or straight across a loop for a shortcut.</p>
+          </div>
+        </article>
+        <article class="feature">
+          <img src="img/grid.jpg" alt="Sixteen cars on the starting grid under the start lights">
+          <div class="body">
+            <h3>Sixteen on the grid</h3>
+            <p>Quick play puts you in a race in seconds, bots filling the field. Ranked matches you against players of your level.</p>
+          </div>
+        </article>
+        <article class="feature text-only">
+          <h3><em>Star</em> Turbo</h3>
+          <p>Drifting fills the turbo meter. Three charges, each a burst past 300 km/h, to fire where it pays.</p>
+          <h3 style="margin-top:18px">The garage</h3>
+          <p>Six cars, sixteen paints, neons, trails and horns. Race to level up and win the rest.</p>
+          <h3 style="margin-top:18px">The level editor</h3>
+          <p>Lay out your own circuit in the game, try it, and publish it for every lobby to race on.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="circuits">
+      <div class="section-head">
+        <h2>Circuits</h2>
+        <p class="lead">Roads hanging in the sky over a city at night, banked, climbing and diving, broken where you have to fly.</p>
+      </div>
+      <div class="circuits">
+        <article class="circuit">
+          <img src="img/leap.jpg" alt="Cascade: flying off the summit, the city far below">
+          <div class="body">
+            <h3>Cascade<span class="new">NEW</span></h3>
+            <div class="facts">5.2 KM · 119 M SUMMIT · 4 GAPS</div>
+            <p>A mountain road through the city: five banked hairpins up to the summit, a leap off it, a descent in steps, a canyon and a valley.</p>
+          </div>
+        </article>
+        <article class="circuit">
+          <img src="img/odyssey.jpg" alt="Odyssey: a banked road through the towers of the city">
+          <div class="body">
+            <h3>Odyssey</h3>
+            <div class="facts">5.3 KM · 3 SHORTCUTS · 3 GAPS</div>
+            <p>A long lap through the sky with three loops hanging off it, each one a shortcut for whoever dares to fly straight across.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="beta">
+      <div class="beta-box">
+        <span class="beta">BETA</span>
+        <div>
+          <h2>Help us finish it</h2>
+          <p>Star Racer is in beta until its release on January 1, 2027. Everything can still change, and what you tell us will change it.</p>
+          <div class="actions">
+            <a class="button primary" href="play/">Play the beta</a>
+          </div>
+        </div>
+        <ul>
+          <li><b>In the game</b>, the BETA panel's FEEDBACK / BUG button sends us a note with your version.</li>
+          <li>Accounts, ratings and levels earned during the beta may be reset before the release.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="platforms">
+      <div class="section-head">
+        <h2>Play anywhere</h2>
+        <p class="lead">In the browser on any computer or on a phone held sideways, or downloaded for Windows. Everyone races together.</p>
+      </div>
+      <div class="platforms">
+        <a class="button primary" href="play/">Play in your browser</a>
+        <a class="button secondary" href="download.html">Download for Windows</a>
+        <span class="chip">Keyboard</span>
+        <span class="chip">Gamepad</span>
+        <span class="chip">Touch</span>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Star Racer · beta</span>
+    <span>Every line of code written by Claude. Font: Saira (<a href="fonts/OFL.txt">SIL OFL</a>).</span>
+  </footer>
+
+  <script>
+    // The countdown to the release, midnight UTC on January 1, 2027.
+    (function () {
+      var release = Date.UTC(2027, 0, 1, 0, 0, 0);
+      var parts = ["days", "hours", "minutes", "seconds"].map(function (id) {
+        return document.getElementById(id);
+      });
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      function tick() {
+        var left = Math.max(0, Math.floor((release - Date.now()) / 1000));
+        var values = [Math.floor(left / 86400), Math.floor(left / 3600) % 24, Math.floor(left / 60) % 60, left % 60];
+        parts.forEach(function (part, i) { part.textContent = i === 0 ? String(values[i]) : pad(values[i]); });
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();
+  </script>
+</body>
+</html>

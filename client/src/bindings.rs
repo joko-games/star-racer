@@ -1,0 +1,725 @@
+//! Which key and which gamepad button does what in a race, as the player set them in the settings
+//! screen (`ui/settings.rs`), kept with their other choices (see [`crate::preferences`]).
+//!
+//! Every action has two keys, so the letters and the arrows both drive, and one gamepad button.
+//! The left stick always steers; the D-pad buttons bound to steering are there for whoever prefers
+//! it. Keys are named by their position on the keyboard, never by the letter a layout prints on
+//! them, which is also how they are read.
+//!
+//! The defaults: W or the up arrow accelerates, A and D or the left and right arrows steer, Shift
+//! or the right Shift drifts, E or the down arrow fires the turbo, Space or Q jumps and thrusts; on
+//! a gamepad the right bumper accelerates, the right trigger drifts, Y, the top face button, fires
+//! the turbo (the user's choice, 2026-11-11), and A, the bottom one, jumps and thrusts.
+//!
+//! The jump and the thrust are two actions on the same keys and button by default (the user's
+//! word, v0.1.52: "fais en deux touches bindable, mais mis sur le même bouton par défaut, qui
+//! d'ailleurs est Croix/A"): pressed, the car hops; held, the thruster lights at the top of the
+//! hop. They are the one pair a key may serve together. Control is never a default: with W held it closes a browser tab, which is
+//! also why a page does not offer it at all.
+//!
+//! What is stored is the name of each key and button, and a name this version does not know is
+//! read back as nothing bound rather than as a file that cannot be read: the player keeps their
+//! nickname and the rest.
+
+use bevy::prelude::*;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+/// What a key or a button can be bound to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Action {
+    Accelerate,
+    SteerLeft,
+    SteerRight,
+    Drift,
+    Turbo,
+    Jump,
+    Thrust,
+    Dash,
+    AirRoll,
+    RearView,
+    Horn,
+    ResetAsPassed,
+    ResetStanding,
+    GiveUp,
+    Standings,
+}
+
+impl Action {
+    pub const ALL: [Self; 15] = [
+        Self::Accelerate,
+        Self::SteerLeft,
+        Self::SteerRight,
+        Self::Drift,
+        Self::Turbo,
+        Self::Jump,
+        Self::Thrust,
+        Self::Dash,
+        Self::AirRoll,
+        Self::RearView,
+        Self::Horn,
+        Self::ResetAsPassed,
+        Self::ResetStanding,
+        Self::GiveUp,
+        Self::Standings,
+    ];
+
+    /// Whether a key or a button may do both `self` and `other`: the jump and the thrust share
+    /// their keys by default, so binding one never takes it from the other.
+    pub fn shares_with(self, other: Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::Jump, Self::Thrust) | (Self::Thrust, Self::Jump)
+        )
+    }
+
+    /// Its name, in the spirit of Rocket Racing (the names the user gave them, v0.1.70).
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Accelerate => "Accelerate",
+            Self::SteerLeft => "Steer left",
+            Self::SteerRight => "Steer right",
+            Self::Drift => "Star Drift",
+            Self::Turbo => "Star Turbo",
+            Self::Jump => "Star Jump",
+            Self::Thrust => "Star Fly",
+            Self::Dash => "Star Dash",
+            Self::AirRoll => "Air Roll",
+            Self::RearView => "Rear view",
+            Self::Horn => "Horn",
+            Self::ResetAsPassed => "Back to checkpoint",
+            Self::ResetStanding => "Restart checkpoint",
+            Self::GiveUp => "Give up",
+            Self::Standings => "Standings",
+        }
+    }
+
+    /// How long it must be held before it does anything, in seconds: the resets and giving up are
+    /// not done by a slip of the thumb.
+    pub fn hold(self) -> f32 {
+        match self {
+            Self::ResetAsPassed | Self::ResetStanding => 1.5,
+            Self::GiveUp => 2.0,
+            _ => 0.0,
+        }
+    }
+}
+
+/// One of the three things an action answers to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Input {
+    Key,
+    Alternate,
+    Gamepad,
+}
+
+impl Input {
+    pub const ALL: [Self; 3] = [Self::Key, Self::Alternate, Self::Gamepad];
+}
+
+/// What one action answers to.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[serde(default)]
+pub struct Binding {
+    pub key: Slot<KeyCode>,
+    pub alternate: Slot<KeyCode>,
+    pub gamepad: Slot<GamepadButton>,
+}
+
+impl Binding {
+    fn new(key: KeyCode, alternate: KeyCode, gamepad: GamepadButton) -> Self {
+        Self {
+            key: Slot(Some(key)),
+            alternate: Slot(Some(alternate)),
+            gamepad: Slot(Some(gamepad)),
+        }
+    }
+
+    /// The keys bound, to hand to `ButtonInput::any_pressed`.
+    pub fn keys(&self) -> impl Iterator<Item = KeyCode> {
+        [self.key.0, self.alternate.0].into_iter().flatten()
+    }
+
+    /// Whether this gamepad holds the button bound. A trigger counts from a third of its travel,
+    /// well before Bevy calls it pressed: a drift is tapped into, and nobody taps a trigger to
+    /// its stop.
+    pub fn held_on(&self, gamepad: &Gamepad) -> bool {
+        self.gamepad.0.is_some_and(|button| {
+            gamepad.pressed(button) || gamepad.get(button).is_some_and(|value| value >= TRIGGER)
+        })
+    }
+
+    /// What the settings screen and the hints call the thing bound to `input`.
+    pub fn label(&self, input: Input) -> &'static str {
+        match input {
+            Input::Key => self.key.label(),
+            Input::Alternate => self.alternate.label(),
+            Input::Gamepad => self.gamepad.label(),
+        }
+    }
+}
+
+/// How far a trigger is pulled, from 0 to 1, when it counts as held.
+const TRIGGER: f32 = 0.33;
+
+/// Every action's binding.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(default)]
+pub struct Bindings {
+    pub accelerate: Binding,
+    pub steer_left: Binding,
+    pub steer_right: Binding,
+    /// The Star Drift; letting go of it pays the Star Boost.
+    pub drift: Binding,
+    pub turbo: Binding,
+    /// Pressed, a hop (since v0.1.48).
+    pub jump: Binding,
+    /// Held in the air, the thruster (since v0.1.52; until then the jump held).
+    pub thrust: Binding,
+    /// The Star Dash (since v0.1.70).
+    pub dash: Binding,
+    /// Held in the air, the Air Roll (since v0.1.70).
+    pub air_roll: Binding,
+    /// Held, the camera looks back (since v0.1.70).
+    pub rear_view: Binding,
+    /// The horn (since v0.1.69).
+    pub horn: Binding,
+    /// Held 0.75 s (1.5 until v0.1.18), back to the last checkpoint as it was passed, or standing on
+    /// it (since v0.1.70).
+    pub reset_as_passed: Binding,
+    pub reset_standing: Binding,
+    /// Held 1 s (2 until v0.1.18), the race given up (since v0.1.70).
+    pub give_up: Binding,
+    /// Shows or hides the standings (since v0.1.70).
+    pub standings: Binding,
+    /// Which defaults the gamepad buttons were saved under: before 2, the ones v0.1.70 changed for
+    /// the layout of Rocket Racing, which are put in place of the old (see
+    /// [`Bindings::migrated`]). Not in a file saved before it, so 0 there.
+    #[serde(default)]
+    pub version: u8,
+}
+
+/// The version of the defaults.
+const BINDINGS_VERSION: u8 = 2;
+
+impl Default for Bindings {
+    fn default() -> Self {
+        let only = |key: KeyCode, gamepad: GamepadButton| Binding {
+            key: Slot(Some(key)),
+            alternate: Slot(None),
+            gamepad: Slot(Some(gamepad)),
+        };
+        Self {
+            // The right bumper, above the trigger: Bevy calls the bumpers triggers and the
+            // triggers "2".
+            accelerate: Binding::new(
+                KeyCode::KeyW,
+                KeyCode::ArrowUp,
+                GamepadButton::RightTrigger,
+            ),
+            steer_left: Binding::new(KeyCode::KeyA, KeyCode::ArrowLeft, GamepadButton::DPadLeft),
+            steer_right: Binding::new(
+                KeyCode::KeyD,
+                KeyCode::ArrowRight,
+                GamepadButton::DPadRight,
+            ),
+            drift: Binding::new(
+                KeyCode::ShiftLeft,
+                KeyCode::ShiftRight,
+                GamepadButton::RightTrigger2,
+            ),
+            // Square, circle and cross, as in Rocket Racing (the user's layout, v0.1.70).
+            turbo: Binding::new(KeyCode::KeyE, KeyCode::ArrowDown, GamepadButton::West),
+            jump: Binding::new(KeyCode::Space, KeyCode::KeyQ, GamepadButton::East),
+            thrust: Binding::new(KeyCode::Space, KeyCode::KeyQ, GamepadButton::South),
+            dash: only(KeyCode::KeyF, GamepadButton::LeftTrigger),
+            air_roll: only(KeyCode::KeyX, GamepadButton::LeftTrigger2),
+            rear_view: only(KeyCode::KeyC, GamepadButton::North),
+            horn: only(KeyCode::KeyH, GamepadButton::RightThumb),
+            reset_as_passed: only(KeyCode::KeyR, GamepadButton::DPadDown),
+            reset_standing: only(KeyCode::KeyT, GamepadButton::DPadUp),
+            give_up: only(KeyCode::KeyG, GamepadButton::LeftThumb),
+            standings: only(KeyCode::KeyL, GamepadButton::Select),
+            version: BINDINGS_VERSION,
+        }
+    }
+}
+
+impl Bindings {
+    pub fn of(&self, action: Action) -> &Binding {
+        match action {
+            Action::Accelerate => &self.accelerate,
+            Action::SteerLeft => &self.steer_left,
+            Action::SteerRight => &self.steer_right,
+            Action::Drift => &self.drift,
+            Action::Turbo => &self.turbo,
+            Action::Jump => &self.jump,
+            Action::Thrust => &self.thrust,
+            Action::Dash => &self.dash,
+            Action::AirRoll => &self.air_roll,
+            Action::RearView => &self.rear_view,
+            Action::Horn => &self.horn,
+            Action::ResetAsPassed => &self.reset_as_passed,
+            Action::ResetStanding => &self.reset_standing,
+            Action::GiveUp => &self.give_up,
+            Action::Standings => &self.standings,
+        }
+    }
+
+    /// Bindings saved before the gamepad took the layout of Rocket Racing (v0.1.70) get its
+    /// buttons; their keys stay as the player left them.
+    pub fn migrated(mut self) -> Self {
+        if self.version < BINDINGS_VERSION {
+            let defaults = Self::default();
+            for action in Action::ALL {
+                self.of_mut(action).gamepad = defaults.of(action).gamepad;
+            }
+            self.version = BINDINGS_VERSION;
+        }
+        self
+    }
+
+    /// The same bindings with every key and button the jump holds taken from any other action
+    /// that held it too. Choices saved before the jump existed bound Space to the drift, and the
+    /// jump's default is Space: it wins it, and the drift gets the right Shift back in its place
+    /// if that is free. The thrust shares the jump's, and keeps them.
+    pub fn with_jump_free(mut self) -> Self {
+        let jump = self.jump;
+        for action in Action::ALL {
+            if action == Action::Jump || action.shares_with(Action::Jump) {
+                continue;
+            }
+            let binding = self.of_mut(action);
+            for slot in [&mut binding.key, &mut binding.alternate] {
+                if slot.0.is_some() && jump.keys().any(|key| Some(key) == slot.0) {
+                    slot.0 = None;
+                }
+            }
+            if binding.gamepad.0.is_some() && binding.gamepad.0 == jump.gamepad.0 {
+                binding.gamepad.0 = None;
+            }
+        }
+        let taken = Action::ALL
+            .iter()
+            .any(|action| self.of(*action).keys().any(|key| key == KeyCode::ShiftRight));
+        if self.drift.alternate.0.is_none() && !taken {
+            self.drift.alternate.0 = Some(KeyCode::ShiftRight);
+        }
+        self
+    }
+
+    fn of_mut(&mut self, action: Action) -> &mut Binding {
+        match action {
+            Action::Accelerate => &mut self.accelerate,
+            Action::SteerLeft => &mut self.steer_left,
+            Action::SteerRight => &mut self.steer_right,
+            Action::Drift => &mut self.drift,
+            Action::Turbo => &mut self.turbo,
+            Action::Jump => &mut self.jump,
+            Action::Thrust => &mut self.thrust,
+            Action::Horn => &mut self.horn,
+            Action::Dash => &mut self.dash,
+            Action::AirRoll => &mut self.air_roll,
+            Action::RearView => &mut self.rear_view,
+            Action::ResetAsPassed => &mut self.reset_as_passed,
+            Action::ResetStanding => &mut self.reset_standing,
+            Action::GiveUp => &mut self.give_up,
+            Action::Standings => &mut self.standings,
+        }
+    }
+
+    /// Binds `key` to `action`, in its first or its second place. A key does one thing: whatever
+    /// else it was bound to lets go of it, but for the one action it may share it with.
+    pub fn bind_key(&mut self, action: Action, alternate: bool, key: KeyCode) {
+        for other in Action::ALL {
+            if action.shares_with(other) {
+                continue;
+            }
+            let binding = self.of_mut(other);
+            for slot in [&mut binding.key, &mut binding.alternate] {
+                if slot.0 == Some(key) {
+                    slot.0 = None;
+                }
+            }
+        }
+        let binding = self.of_mut(action);
+        if alternate {
+            binding.alternate.0 = Some(key);
+        } else {
+            binding.key.0 = Some(key);
+        }
+    }
+
+    /// Binds a gamepad button to `action`, taking it from whatever else it was bound to, but for
+    /// the one action it may share it with.
+    pub fn bind_button(&mut self, action: Action, button: GamepadButton) {
+        for other in Action::ALL {
+            if action.shares_with(other) {
+                continue;
+            }
+            let slot = &mut self.of_mut(other).gamepad;
+            if slot.0 == Some(button) {
+                slot.0 = None;
+            }
+        }
+        self.of_mut(action).gamepad.0 = Some(button);
+    }
+
+    /// Leaves `action` with nothing bound to `input`.
+    pub fn clear(&mut self, action: Action, input: Input) {
+        let binding = self.of_mut(action);
+        match input {
+            Input::Key => binding.key.0 = None,
+            Input::Alternate => binding.alternate.0 = None,
+            Input::Gamepad => binding.gamepad.0 = None,
+        }
+    }
+
+    /// The first key bound to `action`, as the hints over the race name it.
+    pub fn key_label(&self, action: Action) -> &'static str {
+        let binding = self.of(action);
+        if binding.key.0.is_some() {
+            binding.key.label()
+        } else {
+            binding.alternate.label()
+        }
+    }
+}
+
+/// A key or a button that can be bound, and what it is called: once in the file that remembers
+/// it, once on the screen.
+pub trait Bindable: Copy + PartialEq + 'static {
+    /// Every one of them, with its stored name and its label.
+    const TABLE: &'static [(Self, &'static str, &'static str)];
+
+    fn entry(self) -> Option<&'static (Self, &'static str, &'static str)> {
+        Self::TABLE.iter().find(|(candidate, _, _)| *candidate == self)
+    }
+
+    /// Whether the settings screen takes it. What the menus and the race keep for themselves is
+    /// simply not in the table.
+    fn bindable(self) -> bool {
+        self.entry().is_some()
+    }
+}
+
+/// A place for a key or a button, or nothing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Slot<T>(pub Option<T>);
+
+impl<T> Default for Slot<T> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+/// What an empty place is called on the screen.
+pub const UNBOUND: &str = "\u{2014}";
+
+impl<T: Bindable> Slot<T> {
+    pub fn label(&self) -> &'static str {
+        self.0
+            .and_then(Bindable::entry)
+            .map_or(UNBOUND, |(_, _, label)| label)
+    }
+}
+
+impl<T: Bindable> Serialize for Slot<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0
+            .and_then(Bindable::entry)
+            .map(|(_, name, _)| *name)
+            .serialize(serializer)
+    }
+}
+
+impl<'de, T: Bindable> Deserialize<'de> for Slot<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = Option::<String>::deserialize(deserializer)?;
+        Ok(Self(name.and_then(|name| {
+            T::TABLE
+                .iter()
+                .find(|(_, candidate, _)| *candidate == name)
+                .map(|(value, _, _)| *value)
+        })))
+    }
+}
+
+impl Bindable for KeyCode {
+    // Not here, because they are taken: Escape leaves, Enter and Tab work the menus, Backspace
+    // and Delete unbind, and the function keys are the game's own shortcuts.
+    const TABLE: &'static [(Self, &'static str, &'static str)] = &[
+        (KeyCode::KeyA, "KeyA", "A"),
+        (KeyCode::KeyB, "KeyB", "B"),
+        (KeyCode::KeyC, "KeyC", "C"),
+        (KeyCode::KeyD, "KeyD", "D"),
+        (KeyCode::KeyE, "KeyE", "E"),
+        (KeyCode::KeyF, "KeyF", "F"),
+        (KeyCode::KeyG, "KeyG", "G"),
+        (KeyCode::KeyH, "KeyH", "H"),
+        (KeyCode::KeyI, "KeyI", "I"),
+        (KeyCode::KeyJ, "KeyJ", "J"),
+        (KeyCode::KeyK, "KeyK", "K"),
+        (KeyCode::KeyL, "KeyL", "L"),
+        (KeyCode::KeyM, "KeyM", "M"),
+        (KeyCode::KeyN, "KeyN", "N"),
+        (KeyCode::KeyO, "KeyO", "O"),
+        (KeyCode::KeyP, "KeyP", "P"),
+        (KeyCode::KeyQ, "KeyQ", "Q"),
+        (KeyCode::KeyR, "KeyR", "R"),
+        (KeyCode::KeyS, "KeyS", "S"),
+        (KeyCode::KeyT, "KeyT", "T"),
+        (KeyCode::KeyU, "KeyU", "U"),
+        (KeyCode::KeyV, "KeyV", "V"),
+        (KeyCode::KeyW, "KeyW", "W"),
+        (KeyCode::KeyX, "KeyX", "X"),
+        (KeyCode::KeyY, "KeyY", "Y"),
+        (KeyCode::KeyZ, "KeyZ", "Z"),
+        (KeyCode::Digit0, "Digit0", "0"),
+        (KeyCode::Digit1, "Digit1", "1"),
+        (KeyCode::Digit2, "Digit2", "2"),
+        (KeyCode::Digit3, "Digit3", "3"),
+        (KeyCode::Digit4, "Digit4", "4"),
+        (KeyCode::Digit5, "Digit5", "5"),
+        (KeyCode::Digit6, "Digit6", "6"),
+        (KeyCode::Digit7, "Digit7", "7"),
+        (KeyCode::Digit8, "Digit8", "8"),
+        (KeyCode::Digit9, "Digit9", "9"),
+        (KeyCode::ArrowUp, "ArrowUp", "\u{2191}"),
+        (KeyCode::ArrowDown, "ArrowDown", "\u{2193}"),
+        (KeyCode::ArrowLeft, "ArrowLeft", "\u{2190}"),
+        (KeyCode::ArrowRight, "ArrowRight", "\u{2192}"),
+        (KeyCode::Space, "Space", "Space"),
+        (KeyCode::ShiftLeft, "ShiftLeft", "Shift"),
+        (KeyCode::ShiftRight, "ShiftRight", "R-Shift"),
+        (KeyCode::AltLeft, "AltLeft", "Alt"),
+        (KeyCode::AltRight, "AltRight", "R-Alt"),
+        // Control closes a browser tab with W held, so a page does not offer it.
+        #[cfg(not(target_arch = "wasm32"))]
+        (KeyCode::ControlLeft, "ControlLeft", "Ctrl"),
+        #[cfg(not(target_arch = "wasm32"))]
+        (KeyCode::ControlRight, "ControlRight", "R-Ctrl"),
+        (KeyCode::CapsLock, "CapsLock", "Caps"),
+        (KeyCode::Backquote, "Backquote", "`"),
+        (KeyCode::Minus, "Minus", "-"),
+        (KeyCode::Equal, "Equal", "="),
+        (KeyCode::BracketLeft, "BracketLeft", "["),
+        (KeyCode::BracketRight, "BracketRight", "]"),
+        (KeyCode::Backslash, "Backslash", "\\"),
+        (KeyCode::Semicolon, "Semicolon", ";"),
+        (KeyCode::Quote, "Quote", "'"),
+        (KeyCode::Comma, "Comma", ","),
+        (KeyCode::Period, "Period", "."),
+        (KeyCode::Slash, "Slash", "/"),
+        (KeyCode::Numpad0, "Numpad0", "Num 0"),
+        (KeyCode::Numpad1, "Numpad1", "Num 1"),
+        (KeyCode::Numpad2, "Numpad2", "Num 2"),
+        (KeyCode::Numpad3, "Numpad3", "Num 3"),
+        (KeyCode::Numpad4, "Numpad4", "Num 4"),
+        (KeyCode::Numpad5, "Numpad5", "Num 5"),
+        (KeyCode::Numpad6, "Numpad6", "Num 6"),
+        (KeyCode::Numpad7, "Numpad7", "Num 7"),
+        (KeyCode::Numpad8, "Numpad8", "Num 8"),
+        (KeyCode::Numpad9, "Numpad9", "Num 9"),
+    ];
+}
+
+impl Bindable for GamepadButton {
+    // Start is not here: it leaves the lobby.
+    const TABLE: &'static [(Self, &'static str, &'static str)] = &[
+        (GamepadButton::South, "South", "A"),
+        (GamepadButton::East, "East", "B"),
+        (GamepadButton::West, "West", "X"),
+        (GamepadButton::North, "North", "Y"),
+        (GamepadButton::LeftTrigger, "LeftBumper", "L"),
+        (GamepadButton::RightTrigger, "RightBumper", "R"),
+        (GamepadButton::LeftTrigger2, "LeftTrigger", "LT"),
+        (GamepadButton::RightTrigger2, "RightTrigger", "RT"),
+        (GamepadButton::LeftThumb, "LeftStick", "L3"),
+        (GamepadButton::RightThumb, "RightStick", "R3"),
+        (GamepadButton::DPadUp, "DPadUp", "D-pad \u{2191}"),
+        (GamepadButton::DPadDown, "DPadDown", "D-pad \u{2193}"),
+        (GamepadButton::DPadLeft, "DPadLeft", "D-pad \u{2190}"),
+        (GamepadButton::DPadRight, "DPadRight", "D-pad \u{2192}"),
+        (GamepadButton::Select, "Select", "Select"),
+    ];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn round_trip(bindings: &Bindings) -> Bindings {
+        let text = ron::to_string(bindings).expect("bindings can be written");
+        ron::from_str(&text).expect("bindings can be read back")
+    }
+
+    /// The layout of Rocket Racing, the user's of v0.1.70: the Star Drift on R2, the Star Turbo on
+    /// square, the Star Jump on circle, the Star Fly on cross, the rear view on triangle, the Star
+    /// Dash on L1, the Air Roll on L2, the resets on the D-pad, giving up on L3, the standings on
+    /// Select, and the horn on R3.
+    #[test]
+    fn by_default_the_gamepad_is_laid_out_as_rocket_racing() {
+        use GamepadButton::*;
+        let bindings = Bindings::default();
+        let button = |action: Action| bindings.of(action).gamepad.0;
+        for (action, expected) in [
+            (Action::Drift, RightTrigger2),
+            (Action::Turbo, West),
+            (Action::Jump, East),
+            (Action::Thrust, South),
+            (Action::RearView, North),
+            (Action::Dash, LeftTrigger),
+            (Action::AirRoll, LeftTrigger2),
+            (Action::ResetAsPassed, DPadDown),
+            (Action::ResetStanding, DPadUp),
+            (Action::GiveUp, LeftThumb),
+            (Action::Standings, Select),
+            (Action::Horn, RightThumb),
+        ] {
+            assert_eq!(button(action), Some(expected), "{action:?}");
+        }
+        // Every button does one thing.
+        for a in Action::ALL {
+            for b in Action::ALL {
+                if a != b {
+                    assert!(button(a).is_none() || button(a) != button(b), "{a:?} {b:?}");
+                }
+            }
+        }
+        assert_eq!(
+            bindings.accelerate.gamepad.0,
+            Some(GamepadButton::RightTrigger)
+        );
+        assert_eq!(bindings.drift.label(Input::Gamepad), "RT");
+        assert_eq!(bindings.turbo.label(Input::Gamepad), "X");
+    }
+
+    #[test]
+    fn control_is_never_a_default() {
+        let bindings = Bindings::default();
+        for action in Action::ALL {
+            for key in bindings.of(action).keys() {
+                assert!(
+                    !matches!(key, KeyCode::ControlLeft | KeyCode::ControlRight),
+                    "{action:?}"
+                );
+                assert!(key.bindable(), "{action:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn bindings_survive_being_written_and_read_back() {
+        let mut bindings = Bindings::default();
+        bindings.bind_key(Action::Turbo, false, KeyCode::KeyQ);
+        bindings.bind_button(Action::Drift, GamepadButton::West);
+        bindings.clear(Action::Accelerate, Input::Alternate);
+        assert_eq!(round_trip(&bindings), bindings);
+    }
+
+    /// A key does one thing: bound to another action, it leaves the first.
+    #[test]
+    fn a_key_bound_again_leaves_what_it_did_before() {
+        let mut bindings = Bindings::default();
+        bindings.bind_key(Action::Turbo, false, KeyCode::Space);
+        assert_eq!(bindings.turbo.key.0, Some(KeyCode::Space));
+        assert_eq!(bindings.jump.key.0, None);
+        assert_eq!(bindings.jump.alternate.0, Some(KeyCode::KeyQ));
+        assert_eq!(bindings.drift.key.0, Some(KeyCode::ShiftLeft));
+
+        bindings.bind_button(Action::Turbo, GamepadButton::RightTrigger2);
+        assert_eq!(bindings.drift.gamepad.0, None);
+        assert_eq!(bindings.drift.label(Input::Gamepad), UNBOUND);
+    }
+
+    /// Choices saved before the jump existed had Space on the drift: the jump takes it, and the
+    /// drift gets the right Shift in its place.
+    /// The jump and the thrust are on A and Space by default, and binding one leaves the other
+    /// where it was; anything else bound to the key still lets go of it.
+    #[test]
+    fn the_jump_and_the_thrust_share_their_button() {
+        let mut bindings = Bindings::default();
+        assert_eq!(bindings.jump.keys().collect::<Vec<_>>(), bindings.thrust.keys().collect::<Vec<_>>());
+        assert_eq!(bindings.thrust.gamepad.0, Some(GamepadButton::South));
+        bindings.bind_key(Action::Jump, false, KeyCode::KeyF);
+        assert_eq!(bindings.thrust.key.0, Some(KeyCode::Space));
+        bindings.bind_key(Action::Thrust, false, KeyCode::KeyF);
+        assert_eq!(bindings.jump.key.0, Some(KeyCode::KeyF));
+        bindings.bind_button(Action::Thrust, GamepadButton::East);
+        assert_eq!(bindings.jump.gamepad.0, Some(GamepadButton::East));
+        bindings.bind_key(Action::Turbo, false, KeyCode::KeyF);
+        assert_eq!((bindings.jump.key.0, bindings.thrust.key.0), (None, None));
+    }
+
+    #[test]
+    fn the_jump_takes_space_from_an_old_drift() {
+        let mut old = Bindings::default();
+        old.drift.alternate.0 = Some(KeyCode::Space);
+        old.drift.gamepad.0 = Some(GamepadButton::East);
+        let bindings = old.with_jump_free();
+        assert_eq!(bindings.jump.key.0, Some(KeyCode::Space));
+        assert_eq!(bindings.drift.key.0, Some(KeyCode::ShiftLeft));
+        assert_eq!(bindings.drift.alternate.0, Some(KeyCode::ShiftRight));
+        assert_eq!(bindings.drift.gamepad.0, None);
+        assert_eq!(Bindings::default().with_jump_free(), Bindings::default());
+    }
+
+    /// Bindings saved before the layout of Rocket Racing take its gamepad buttons and keep their
+    /// keys; saved after it, they are left as they are.
+    #[test]
+    fn old_gamepad_buttons_take_the_new_layout() {
+        let old: Bindings =
+            ron::from_str(r#"(turbo: (key: Some("KeyP"), gamepad: Some("North")))"#).unwrap();
+        assert_eq!(old.version, 0);
+        let migrated = old.migrated();
+        assert_eq!(migrated.turbo.gamepad.0, Some(GamepadButton::West));
+        assert_eq!(migrated.turbo.key.0, Some(KeyCode::KeyP));
+        assert_eq!(migrated.rear_view.gamepad.0, Some(GamepadButton::North));
+        let mut mine = Bindings::default();
+        mine.bind_button(Action::Turbo, GamepadButton::North);
+        let read = round_trip(&mine).migrated();
+        assert_eq!(read.turbo.gamepad.0, Some(GamepadButton::North));
+    }
+
+    /// A name from another version is nothing bound, not a file that cannot be read.
+    #[test]
+    fn a_name_nobody_knows_is_read_as_nothing_bound() {
+        let bindings: Bindings = ron::from_str(
+            r#"(drift: (key: Some("Hyperspace"), gamepad: Some("Paddle4")), turbo: (key: None))"#,
+        )
+        .expect("an unknown name still reads");
+        assert_eq!(bindings.drift.key.0, None);
+        assert_eq!(bindings.drift.gamepad.0, None);
+        assert_eq!(bindings.turbo.key.0, None);
+        // An action the file does not mention keeps its default.
+        assert_eq!(bindings.accelerate, Bindings::default().accelerate);
+    }
+
+    #[test]
+    fn what_the_game_keeps_for_itself_cannot_be_bound() {
+        for key in [
+            KeyCode::Escape,
+            KeyCode::Enter,
+            KeyCode::Tab,
+            KeyCode::Backspace,
+            KeyCode::F3,
+        ] {
+            assert!(!key.bindable(), "{key:?}");
+        }
+        assert!(!GamepadButton::Start.bindable());
+    }
+
+    #[test]
+    fn every_name_is_there_once() {
+        fn check<T: Bindable + std::fmt::Debug>() {
+            for (index, (value, name, _)) in T::TABLE.iter().enumerate() {
+                for (other, other_name, _) in &T::TABLE[index + 1..] {
+                    assert!(value != other, "{value:?} twice");
+                    assert_ne!(name, other_name);
+                }
+            }
+        }
+        check::<KeyCode>();
+        check::<GamepadButton>();
+    }
+}

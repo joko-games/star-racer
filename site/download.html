@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Download Star Racer</title>
+  <meta name="description" content="Star Racer for Windows: an online arcade racing game at full speed. Linux and macOS players race in the browser.">
+  <link rel="icon" href="/favicon.png">
+  <style>
+    /* The menus' colors (client/src/ui/theme.rs): a dark translucent panel, neon blue. */
+    :root {
+      --background: #000;
+      --panel: rgba(10, 12, 18, 0.88);
+      --border: rgba(40, 140, 255, 0.35);
+      --neon: #1a9bff;
+      --text: #eef2ff;
+      --dim: #99a6bd;
+      --faint: #66708a;
+      --magenta: #ff3d8b;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background:
+        radial-gradient(ellipse at 70% 10%, rgba(140, 30, 160, 0.35), transparent 55%),
+        linear-gradient(to bottom, #000 0%, #02040c 60%, #000 100%);
+      color: var(--text);
+      /* The page asks nothing of anyone else's server, as the game does not: the system's font. */
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 16px;
+    }
+    h1 {
+      font-style: italic;
+      font-weight: 800;
+      font-size: clamp(44px, 9vw, 84px);
+      margin: 0;
+      letter-spacing: -1px;
+      text-shadow: 4px 4px 0 rgba(26, 155, 255, 0.8);
+    }
+    .tagline {
+      color: var(--neon);
+      letter-spacing: 5px;
+      font-size: 14px;
+      font-weight: 600;
+      margin: 4px 0 36px;
+      text-align: center;
+    }
+    .card {
+      width: min(560px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .play {
+      display: block;
+      text-align: center;
+      background: var(--neon);
+      color: #041020;
+      font-weight: 700;
+      font-size: 24px;
+      letter-spacing: 1px;
+      padding: 16px;
+      border-radius: 8px;
+      text-decoration: none;
+    }
+    .play:hover { background: #59c7ff; }
+    .caption {
+      color: var(--faint);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      margin-top: 10px;
+    }
+    a.download {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border: 1.5px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      text-decoration: none;
+    }
+    a.download:hover { border-color: var(--neon); background: rgba(26, 155, 255, 0.08); }
+    a.download.yours { border-color: var(--neon); }
+    a.download strong { font-size: 19px; }
+    a.download span { color: var(--dim); font-size: 14px; }
+    .note { color: var(--dim); font-size: 14px; line-height: 1.5; margin: 6px 0 0; }
+    .note code { color: var(--text); }
+    .footer { margin-top: 28px; color: var(--faint); font-size: 13px; text-align: center; }
+    .footer a { color: var(--dim); }
+    .download.unavailable {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 14px 18px; border: 1px dashed var(--border); border-radius: 10px; opacity: 0.5;
+    }
+    .download.unavailable span { color: var(--dim); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>STAR RACER</h1>
+  <div class="tagline">ONLINE ARCADE RACING · BETA</div>
+  <div class="card">
+    <a class="play" href="play/">PLAY IN THE BROWSER</a>
+    <div class="caption">OR DOWNLOAD THE GAME</div>
+    <!-- Served from this site, put there by deploy/deploy.ps1 with every version deployed
+         (docs/releases.md). Linux and macOS were built by a GitHub workflow, gone with GitHub. -->
+    <a class="download" data-os="windows" href="downloads/star-racer-windows-x86_64.zip">
+      <strong>Windows</strong><span>64-bit · .zip</span>
+    </a>
+    <div class="download unavailable" data-os="linux">
+      <strong>Linux</strong><span>coming back soon</span>
+    </div>
+    <div class="download unavailable" data-os="macos">
+      <strong>macOS</strong><span>coming back soon</span>
+    </div>
+    <p class="note">
+      One file to run, nothing to install: unpack it and start <code>star-racer-client</code>.
+      It plays on the same server as this site, with a gamepad, a keyboard or both. The build is
+      not signed: Windows asks before running it the first time ("More info", then "Run anyway").
+      On Linux and macOS, the browser version runs the same game, against the same players.
+    </p>
+  </div>
+  <!-- The game server, with its data: the circuits and the car's tuning (since v0.1.14, the user's
+       list of 2026-11-23). Packed by deploy/deploy.ps1 with the game's own README. -->
+  <div class="card" id="server">
+    <div class="caption">OR RUN YOUR OWN SERVER</div>
+    <a class="download" data-server="windows" href="downloads/star-racer-server-windows-x86_64.zip">
+      <strong>Server for Windows</strong><span>64-bit · .zip</span>
+    </a>
+    <a class="download" data-server="linux" href="downloads/star-racer-server-linux-x86_64.tar.gz">
+      <strong>Server for Linux</strong><span>64-bit · .tar.gz</span>
+    </a>
+    <p class="note">
+      The same server this site runs, with the circuits and the car's tuning in its
+      <code>data</code> folder. Unpack it and start <code>star-racer-server</code> from inside the
+      folder; it listens on port 8080 of this computer only. In the downloaded game, SETTINGS, then
+      SERVER: type <code>127.0.0.1</code>.
+    </p>
+    <p class="note">
+      To race friends on the same network, start it with <code>--listen 0.0.0.0</code>, and let them
+      type <code>ws://</code> and your computer's address with the port, such as
+      <code>ws://192.168.1.20:8080</code>. Over the internet, the port has to be opened on your
+      router. Only the downloaded game can join such a server: a page served over HTTPS, like this
+      one, may not reach a plain <code>ws://</code> address. Accounts, ranked ratings and experience
+      are kept in files beside it; <code>--help</code> lists the options.
+    </p>
+  </div>
+  <div class="footer">
+    <a href="/">Star Racer</a>
+  </div>
+  <script>
+    // The visitor's own system stands out.
+    const agent = navigator.userAgent;
+    const os = /Windows/.test(agent) ? "windows"
+      : /Mac OS X|Macintosh/.test(agent) ? "macos"
+      : /Linux|X11/.test(agent) ? "linux" : null;
+    if (os) {
+      document.querySelector(`a.download[data-os="${os}"]`)?.classList.add("yours");
+    }
+  </script>
+</body>
+</html>

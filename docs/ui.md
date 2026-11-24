@@ -1,0 +1,583 @@
+# Interface
+
+The client's screens and what they are built from, in `client/src/ui/`. Everything is Bevy UI,
+with the widgets of `bevy_ui_widgets` (buttons, editable text) and Bevy's directional navigation:
+no extra crate.
+
+## Screens
+
+```text
+        ┌────── quick play, a ranked match ──────┐
+        │                                        ▼
+      Login ──browse lobbies──▶ Lobbies ──join──▶ Lobby (race view and HUD)
+        │ ▲
+        ▼ │ done
+      Garage
+```
+
+`screen::Screen` is a Bevy state. The first screen is the hub: everything starts from it and
+ends back on it, still connected, a player who left a lobby going back to the menu they came from
+(`AfterLobby`). A button pressed there says what the player wants (`Intent`), which is carried out
+once connected, at once if they already are. `JoinedLobby` moves them into a lobby, any
+disconnection or rejection goes back to the first screen, which says why, and so does the end of a
+ranked match. Each screen's entities despawn when it is left.
+
+- **Login** (`login.rs`): the title, a nickname field already filled in, with the nickname last
+  played under or a generated one, and the two ways into a race as big as the screen allows:
+  **QUICK PLAY**, and **QUEUE FOR RANKED** under it with where the player stands on the ladder
+  (see [Quick play and ranked](ranked.md)). A race is one press away from the moment the game
+  opens, even with a gamepad, which cannot type. Since v1.0.0-rc3 (the user's word "Sépare le sign
+  in du fait de rentrer dans une partie") signing in is a press of its own: on the SIGN IN and NEW
+  ACCOUNT tabs a SIGN IN or CREATE ACCOUNT button beside the password, and Enter in either field,
+  connect without going anywhere, and QUICK PLAY, ranked and the rest stay grey until the card says
+  who the player is (a guest needs no such step; until then Enter in the field was quick play). While queued,
+  the ranked button counts the time and cancels. The dice button rolls another nickname. The last
+  nickname is saved next to the identity key when the player presses a button. Since v0.1.68 (the
+  user's word "Allège le menu d'accueil") the title stands alone, with no line under it, a guest
+  gets no help line (the ranked button already says to sign in), and the server's address shows in
+  the corner only when it is not the default one: the bottom right corner since v0.1.12, before the
+  key hints, the beta panel holding the bottom left one, where the address went under it. Under the card, in quiet buttons, text until
+  focused: LOBBIES, LEADERBOARD (a dialog with the ten best, `leaderboard.rs`), GARAGE (below),
+  SETTINGS (see
+  [Settings](#settings)) and QUIT, which closes
+  the game: the window's close button does the same, but a gamepad cannot reach it. QUIT has no
+  shortcut, Escape and B being "back" on every other screen, where pressing them once too often
+  must not close the game; and the web has no such button, since a page cannot close the tab it is
+  in.
+- **Since v1.0.0-rc1 the garage reads in three groups** (the user's word on 2026-11-24: "Améliore le
+  garage, ca manque un peu de clarté"): THE CAR (MODEL, PAINT, NEON), ITS TRAIL (STYLE, COLOR) and
+  ITS EFFECTS (HORN, TURBO), titled in neon on a desk (not on a phone, which has no height to
+  spare); the rows' names larger and brighter (13 in dim, were 12 in faint); rows, gaps and color
+  tiles a little tighter to make the room. And every car is drawn 1.4 times taller from its
+  underside up, wheels excepted (the user's word: "Donner de l'épaisseur à toutes les voitures,
+  elles sont trop plates"; `STRETCH` in `car_model.rs`).
+- **Garage** (`garage.rs`, since v0.1.40, the user's request "fais trois nouvelles
+  voitures/pods ainsi qu'un choix et customization de voiture"): the player's car standing over the
+  menu's neon grid, turning slowly under a light of its own with its trail swept out behind it as
+  if it had just driven a bend, beside a card of six rows: **CAR** (COMET, BOLT, PULSE, PHANTOM,
+  TITAN, NOVA, each with a line about it), **PAINT**, **NEON**, **TRAIL** (RIBBON, SKID, PIXELS,
+  ZIGZAG, HELIX, ARROWS), its **COLOR**, and **HORN** (TWO-TONE, AIR HORN, BEEP BEEP, LASER,
+  FANFARE, SAUCER, each played as it is stepped to). The car, the trail and the horn are stepped
+  with left and right, the arrows or a click; since v0.1.69 the three colors are palettes, at the
+  user's word "les choix de couleur se feront par une palette": every color of the row at once,
+  sixteen paints and twelve neons, the chosen one ringed, picked with a click or stepped along
+  with left and right; since v0.1.71 each palette shows the chosen color's name over tiles eight to a
+  row, the chosen tile ringed in white, glowing in its own color and a little larger; since
+  v1.0.0-rc1 a tile lights up under the mouse and is picked on the press itself, its row taking the
+  focus (the user's word "Dans le garage, on doit pouvoir selectionner les couleurs à la souris"). What is not won
+  yet (see [Rewards](rewards.md)) is shown and previewed, its
+  name dim and `LOCKED · LEVEL 8` under it; the player's level stands small in the card's corner.
+  DONE, Escape or B keeps what is chosen of what is unlocked, tells the server if connected
+  (`SetLook`), and goes back to the first screen. It needs no connection. Every car drives the
+  same: the look is drawn, never simulated (see
+  [Architecture](architecture.md#displaying-the-race)). `--garage` opens it, to capture it.
+- **Lobbies** (`lobbies.rs`): every lobby, live, with its track, players and a status badge; the
+  focused lobby's details beside the list (track thumbnail, what joining means right now, who is
+  in). A header shows the player's nickname, HOME back to the first screen, and the button to
+  create a lobby. Under the list,
+  everyone connected to the server, as a chip each: a dot in the color of where they are, their
+  name (the player's own in orange), and the lobby they are in or "on the list". It is the one
+  place that shows a player who is in no lobby, and its caption counts them all, including those
+  past the two rows of chips it has room for.
+- **Create a lobby** (`create_lobby.rs`): a dialog over the browser, with a name and four steppers
+  (track, laps, players to start, maximum players), all with defaults. The browser is hidden while
+  it is open, so navigation cannot wander behind it.
+- **Lobby** (`hud.rs`, over the 3D race): the circuit's name large in neon at the top left, the
+  lobby's name and its laps under it (since v0.1.74), the circuit's name again, larger, over the start
+  lights with its laps and length while the grid lines up, fading out in the last 0.6 s before the
+  start (since v0.1.80, `INTRO_OUT_SECONDS`; smaller and higher since v1.0.0-rc1), the phase ("waiting for players", the
+  lap), the four start lights over the grid (a row of circles on a dark pill, lighting up one a
+  second: three amber that pop as they light, then the start itself, green, blazing larger with a
+  ring bursting out of it, each with its own sound, see [Sound](sound.md)), the start grade (S to E) for three seconds
+  after it, the lap and race time, the standings or the player list, the speed, three gauges as arcs
+  of one circle around the car near the middle of the screen (`gauges.rs`, since v0.1.74, the
+  user's word "regrouper barre de turbo, barre de drift et barre de thrust vers le centre de
+  l'écran, sous forme d'arc de cercle"): DRIFT on the left, which since v0.1.78 reads the charge itself:
+  dim while it charges, a white notch where it starts to pay, bright and glowing past it with the
+  boost on offer beside its name ("DRIFT +0.8s"), white and pulsing once full (MAX), then amber as
+  BOOST while the boost it paid runs out; TURBO underneath, one stretch per charge, a full one
+  glowing magenta and the one filling dim, white while one fires, the charges ready counted beside
+  its name; THRUST on the right, the tank, lit in the air or filling, red under a quarter, and since
+  v1.0.0-rc1 not drawn at all while full on the road. Bevy's UI having no arc, each is a row of short segments laid end
+  to end along the circle and turned with it; what is lit glows, its leading end brighter (since v0.1.78, the user's word
+  "Améliore largement le visuel des jauges et intègre y le chargement du drift"). In v1.0.0-rc1
+  each became one thin line of neon in a light outline ("Fais que les jauges ne soient qu'une ligne
+  neon jolie avec une outline légère"); since v1.0.0-rc3 ("Je veux des lignes beaucoup plus jolies
+  pour les jauges, des courbes neon en gros") each is a real curve drawn by a shader of its own
+  (`ui/arc.wgsl`, an `ArcMaterial` per arc): a round-ended line 15 pixels thick (9 on a phone),
+  white-hot along its middle and at its lit end, in a glow fading out around it, the turbo's cut into
+  its three charges. Since v1.0.0-rc7 ("Améliore le visuel des jauges, je les veux plus fine,
+  l'effet moins \"cheap\", et fais épouser la barre de thrust a l'exterieur contre les deux autres
+  barres") the lines are 6 pixels thick (4 on a phone), crisp, a shade brighter toward their lit
+  end with a small white spot at it, in a tight glow, over a hairline where unlit, the white core
+  and wide halo gone; and THRUST left the right side for a ring of its own just outside the other
+  two, under a line's width away, running along the whole of the turbo and the drift (62 to 178
+  degrees), filling from under the car's right, its name at that end. Since v0.1.2 ("tu me centreras la
+  vitesse proche des jauges") the speed is no longer in the bottom left corner (top left on a
+  phone) but centered inside the ring, just over the turbo's arc, under the car
+  (`gauges::speed_place`): under the ring the key hints run along a desk's screen and a phone's
+  screen ends. A checkpoint passed
+  is a quiet CHECKPOINT under the lap time, fading out, without its number (BACK ON TRACK the
+  same after a fall); the count before a car off its course is brought back stays large. The arc of green segments on the road around the
+  back of the car that showed the charge until v0.1.78 is gone, folded into the DRIFT arc. The
+  results between races, the other players' names above their cars (a bot's smaller), a
+  confirmation before leaving, and, on F3, the latency figures (see [Latency](latency.md)).
+  Spectators see whom they watch and switch cars with left and right.
+
+  **Stacked gauges** (v0.1.20, a first iteration of the user's word on 2026-11-23: "Les trois jauges
+deviennent un peu plus court, un peu plus épaisses aussi, et s'empilent plutot que de s'agencer.
+On va travailler sur ces jauges sur plusieurs itérations"): the three arcs one inside the next on
+the same 70 degrees under the car (`STACK_ARC`, 125 to 55), all filling from the left: the turbo
+inside, the thruster's tank next, the drift outside, 2.2 lines apart (`RING_STEP`); lines 9 pixels
+thick on a desk and 6 on a phone (6 and 4 before); each name at its ring's left end, moved apart
+to a line of text (`label_place`); the speed lifted over the stack's ends. Until then the drift
+ran on an outer ring from under the car's right round to the left, the thruster on the left and the
+turbo under the car, as described above. Captured in a race at the desk and phone sizes. To be
+judged, over the next iterations: the stretch, the thickness, the order of the rings, the names.
+
+**Standings left, lap and time right** (v0.1.17, the user's word on 2026-11-23: "Le classement
+de course passe à gauche, les laps et le temps à droite, et pour le temps pour s'arrête au
+centieme de seconde pas plus"): the standings, or the players before a race, are in the top left; the lap
+and the race time in the top right, the checkpoint line under them; the circuit, the lobby and
+the player's card on the right too between races, and the latency figures (F3) under them; every
+race time to the hundredth (`race_time`, cut, not rounded). The centre keeps RACE IN, WATCHING,
+FINISHED and the results. On a touchscreen the race's beta panel goes on the left under the
+standings, the right holding LEAVE above the lap.
+
+**Cleared for the race** (v0.1.5, the user's word "Enlève des élements superflus à l'écran, on
+  doit épurer, fournir le max de vision de la race au joueur. Je pense au nom du circuit à gauche
+  et autres"): the circuit and the lobby in the top left are shown outside races only (the circuit is
+  named in the middle as the grid lines up); the standings show at most five rows in a race, the
+  leader and the places around the player's (`race_rows`), and no longer repeat LAP N on every
+  line, only a time once finished or OUT; the names above the cars are smaller (12, a bot's 9.5;
+  "Tu diminueras la taille des pseudos au dessus des voitures"); and the controls, the version and
+  the frame rate moved into [the beta panel](feedback.md), smaller. The arcs: the drift and the
+  thruster swapped places ("la barre de drift prend la place de la barre de thrust, et
+  inversement"), the drift now on the outer ring, the thruster on the left, always shown ("le
+  barre de thrust reste toujours active"; it was hidden while full since v1.0.0-rc1).
+
+**The version** (since v0.1.78, the user's word "Indique clairement la version du jeu et
+"alpha" sur la page d'accueil et en petit un peu partout"): under the title of the first screen, a
+badge and the version (`ui::version`, the client crate's), an amber BETA since v0.1.5 (a magenta
+ALPHA before); in [the beta panel](feedback.md) on every other screen and in a race.
+
+Generated nicknames (`nickname.rs`) are an adjective and a noun from the game's world ("Neon
+Falcon", "Drifting Hexagon"); a test checks every combination is a valid nickname.
+
+### The player's card
+
+Since v1.0.0-rc2 (the user's word: "Tu feras que son rank (ou unranked) et son niveau, soient souvent
+bien visibles et jolis"), `ui/player_card.rs`: a pill with a gem glowing in the tier's color (bronze,
+silver, gold, platinum, diamond, champion), the tier, the rating and the place, or UNRANKED for a
+guest and for an account in its placement games (with how many it has played), then LVL and the
+level over a thin neon bar of the way to the next. Shown once the server has welcomed the player:
+in the top right corner of the first screen, the garage and the editor; at the top of the lobby
+list, in the middle (on a phone, right of the title); under the lobby's name in a lobby, except
+while a race is on.
+
+## Look
+
+Dark translucent panels over the dark scene, with one neon blue accent shared with the track.
+Status colors always mean the same thing: amber for a start to come, magenta for a race on, green for
+results and finishes, orange for the player themselves (their car's color). Behind the menus, a
+neon grid rushes toward the camera and fades into fog (`backdrop.rs`), under the starry sky the
+races have too, which the fog leaves alone (see [Sky](sky.md)).
+
+The font is **Saira** (SIL Open Font License, `client/assets/fonts/OFL.txt`), a variable font with
+weight and width axes: titles and big numbers use its heavy condensed italic, which gives the
+motorsport feel, and the rest its regular upright. Both files are embedded in the executable with
+`include_bytes!`, so no asset path can go missing, native or web. It is the one file of the
+repository not in the public domain.
+
+The interface is laid out for a 720-pixel-high window and scaled with the window height through
+`UiScale`, so it keeps its proportions from a small window to a 4K screen.
+
+Thumbnails of tracks are drawn on the CPU into an image (`thumbnail.rs`) when the track list
+arrives: the road, as wide as it is at each point so a bottleneck shows, neon edges with a glow,
+and the start line.
+
+## Widgets
+
+`widgets.rs` spawns widgets that only say what they are (a primary button, a text field, a
+selectable row, a stepper); systems style them every frame from their state: hovered, pressed,
+focused, disabled. Screens never restyle anything, they add or remove `InteractionDisabled`.
+
+Since v0.1.13 (the user's word on 2026-11-23: the lobby list and the menus around it "less
+discreet, easier to read") a selectable row at rest is a touch brighter (`SURFACE_ROW`) and edged
+in a faint blue (`ROW_BORDER`), where it was nearly invisible until it had the focus; a badge is
+filled and edged more strongly (`BADGE_FILL` 0.2, `BADGE_EDGE` 0.7) with larger text; and a lobby
+waiting for players is blue, where it was grey. The lobby list's text grew and brightened: names
+20, the track 16.5 in full white, players 18, rows 3 px taller, the column captions 13.5 in dim
+rather than faint, the details panel's track and description in full white, and the players
+online in larger chips with their place in dim rather than faint. Captured at the desktop and
+phone sizes, with the create dialog and the garage, which share the rows.
+
+The HUD follows the same idea at a larger scale: each frame builds a model of what it should say,
+and one pass writes it into the text entities and shows or hides blocks.
+
+## What the menus remember
+
+The player's choices come back next time (`client/src/preferences.rs`), stored beside their
+identity key, so `--identity` gives each player on a machine their own: a file
+(`preferences.ron`) on native, local storage in the browser.
+
+**What the dice offered is not a choice.** A generated nickname is remembered only once the player
+has edited it; someone who plays under what was offered gets a new one at the next launch, which is
+the point of generating one. The lobby name works the same way, since it is offered as
+"*nickname*'s lobby". Everything else in the creation dialog — track, laps, players to start,
+maximum players — is remembered as soon as a lobby is created with it. The car's look is too,
+when the garage is left; a first run is given one at random (`CarLook::random`) and keeps it, so a
+grid of players who never visited the garage is not a grid of the same car. So is everything the
+[settings](#settings) hold: the bindings, the layout of the touch controls, and vibration.
+
+Anything read back is checked before it is used: a nickname that is no longer valid, a lap count
+outside what a lobby allows, a track the server no longer has, all fall back to the default instead
+of reaching the server. The file can be edited by hand, and an older version may have written
+something this one refuses.
+
+## Settings
+
+SETTINGS, on the first screen, opens a dialog over it (`ui/settings.rs`; `--settings` opens it at
+once). What it holds is stored with the other choices, written out as it changes, and in force
+from the next lobby entered.
+
+Since v0.1.21 the settings are reached over a race too (the user's word on 2026-11-23: "On doit
+pouvoir accéder aux settings en race aussi"): the race's menu (Escape, Start, or LEAVE on a
+touchscreen) holds SETTINGS beside STAY and LEAVE. The menu stays open behind them, so the car
+lets go as it does under the menu, and stands aside while they are up; closing them comes back to
+the menu. Back closes the settings, never the menu with them. Over a race the dialog has no
+SERVER field, changing server being the end of the race. `--settings` with `--lobby` or
+`--quick-play` opens them over the race.
+
+Since v1.0.0-rc4: vibration is off until switched on ("vibration off par défaut"), and GRAPHICS &
+SOUND, beside RESET, opens a sub-menu over the settings (`ui/sound_graphics.rs`,
+`--sound-graphics`): the general volume and the horns' as neon bars stepped by tenths with ‹ and ›
+(the general one scales the `--volume` the game started with, the horns' every horn heard), the
+music's greyed until there is music, and the graphics level, AUTO or one of four (see
+[Graphics quality](graphics.md)). Back closes the sub-menu first. On the first screen the
+LEADERBOARD button is greyed once the server has said nobody is on the ladder yet. Since v0.1.12
+that is the leaderboard itself, which guests receive too (it was the profile, an account's, so the
+button never greyed for a guest); and pressed before the game knows, the button waits for it and,
+empty, opens nothing: the screen says "No ranked race has been played yet." where a dialog used
+to open over nothing as the button greyed under it (the user's report of 2026-11-23).
+
+**With keys and a gamepad**, it is the table of bindings (`client/src/bindings.rs`), in two
+columns since v0.1.70: fifteen actions, each with two keys and one gamepad button. Since v0.1.70
+they bear the names of Rocket Racing, which the game takes after openly, and the gamepad is laid
+out as it was (the user's word: "Le drift est le \"Star Drift\", defaut manette sur R2, quand on en
+sort, ca produit un \"Star Boost\" [...]").
+
+| Action | Key | Or | Gamepad |
+| --- | --- | --- | --- |
+| Accelerate | W | up arrow | R1 (right bumper) |
+| Steer left | A | left arrow | D-pad left |
+| Steer right | D | right arrow | D-pad right |
+| Star Drift (its release pays the Star Boost) | Shift | right Shift | R2 (right trigger) |
+| Star Turbo | E | down arrow | square / X |
+| Star Jump | Space | Q | circle / B |
+| Star Fly (the thruster) | Space | Q | cross / A |
+| Star Dash | F | -- | L1 |
+| Air Roll | X | -- | L2 |
+| Rear view | C | -- | triangle / Y |
+| Horn | H | -- | R3 |
+| Back to checkpoint, held 0.75 s | R | -- | D-pad down |
+| Restart checkpoint, held 0.75 s | T | -- | D-pad up |
+| Give up, held 1 s | G | -- | L3 |
+| Standings, shown or hidden | L | -- | Select |
+
+Since v0.1.18 the holds are halved (0.75 s for the resets, 1 s to give up; the user's word on
+2026-11-23: "Diminue le temps des differents reset/giveup par deux") and no percentage shows: the
+resets show nothing, and giving up shows a warning sign in an amber ring that loads around it,
+GIVING UP… under it, where the start grade goes (`Block::GiveUp`, the gauges' `ArcMaterial::ring`).
+
+Start and Escape open the menu, and cannot be bound. Until v0.1.18 a held action filled in the HUD where
+the start grade shows, in percent, under its name (see above for what replaced it). Bindings saved before v0.1.70 are given the new gamepad
+buttons and keep their keys (`Bindings::migrated`, by the `version` stored with them). On the
+keyboard the Air Roll pitches with the accelerator (dive) and S (hold up).
+
+Those are the defaults, the gamepad's drift and turbo being the user's choice of 2026-11-11. The
+jump (v0.1.48) took Space and A, Rocket Racing's, and the drift's second key became the right
+Shift; choices saved before it had Space on the drift, and are given the new arrangement when read
+(`Bindings::with_jump_free`). The thrust (v0.1.52) is the one action that shares its keys and
+button with another, the jump's, as the user asked: a press hops and a hold flies. Binding either
+never takes its key from the other, though anything else bound to that key still lets go of it
+(`Action::shares_with`); since v0.1.70 they share their keys but not their gamepad button. The
+left stick always steers and is not in the table. A place is changed by picking it and pressing
+the key or the button it should be: the dialog *listens* for the next press, and while it does the
+menus do not answer and nothing has the focus, which is what lets the arrows, Space and the
+gamepad's own A be bound. Escape, or Start on a gamepad, gives up; Backspace or Delete leaves the
+place empty. A key does one thing: bound to an action, it leaves whatever it did before, which
+then shows as "—".
+
+- **Keys are named by position**, as they are read: the table shows what a key is called where
+  it sits, never what a layout prints on it.
+- **What the game keeps cannot be bound**: Escape (leave), Enter and Tab (menus), Backspace and
+  Delete (unbind), the function keys, and Start on a gamepad. Control is offered natively and
+  never by a page, where with W held it closes the tab; it is never a default.
+- **A stored name this version does not know** -- a key from a newer one, a typo in a file edited
+  by hand -- is read as an empty place, not as a file that cannot be read, so the nickname and the
+  rest survive it.
+- The hints over the race name the first key and the gamepad button of each action as bound.
+
+**Display** (since v0.1.5, in GRAPHICS & SOUND, the user's word "Offre de la customisation dans les
+settings graphiques, comme le mode plein écran/fullscreen/fenêtré, adapté dans le cas du web
+également"; `client/src/display.rs`): natively WINDOWED, BORDERLESS (a window the size of the
+screen) or FULL SCREEN, kept with the player's choices and applied at once and at every start; in a
+browser WINDOWED or FULL SCREEN, the browser's, asked for from the button's press, the only moment a
+page may, and so not applied at start. A window size given on the command line (captures, films)
+wins over it.
+
+Under the table, **Vibration** turns off the gamepad's rumble and the phone's buzz together.
+RESET TO DEFAULTS puts back everything the dialog holds.
+
+**On a touchscreen** there are no keys, and the dialog holds what thumbs care about instead
+(`TouchOptions` in `ui/touch.rs`), each a button that steps to its next value:
+
+| Option | Values | Why |
+| --- | --- | --- |
+| Steering thumb | left, right | Which hand steers is a habit, and left-handed players' is the other one. Swapped, the whole layout is mirrored, so the turbo branch still points to the middle of the screen, where the thumb folds. |
+| Size of the controls | small (85 %), medium, large (120 %) | Hands and screens differ more than the 400-unit layout can average: a small phone wants its corners back, a tablet wants reach. Everything scales from its corner, margins included. |
+| Steering | gentle, normal, sharp | How far out full lock is: at the rim of a button, on its outer part (three quarters on its middle, the default), or from its middle outward. It is the stick's travel, for a thumb. |
+| Vibration | on, off | Some phones buzz loudly, and it costs battery. |
+
+Considered and left out: moving each control freely (a layout editor is a screen of its own, and
+swap plus size cover what was asked of it), opacity (the controls are already dark glass), and a
+tilt-to-steer mode (it fights the landscape lock and has no dead zone to speak of). A phone with
+a gamepad paired keeps the default gamepad bindings: the table is not shown there. Large and
+swapped together, the cross reaches up into the speed and its gauges on a 390-pixel screen.
+
+## Watching
+
+Since v0.1.71 (the user's word: "Ajoute qu'on puisse rejoindre une partie en spectateur, et avoir un
+controle camera sympa, en freefly, mais qu'on puisse changer de mode aussi, suivre des joueurs, jour
+tout depuis le dessus"), whoever spectates, having come in with WATCH or too late to race, picks a
+camera with V or triangle / Y (`client/src/spectator.rs`), named under the title:
+
+- **CHASE**: behind the car watched; left and right change car, in race order.
+- **ORBIT**: round the car watched, close and low, turning slowly.
+- **TOP**: 70 m over the car watched, a little behind it, easing after it: the race from above.
+- **FREE**: flown anywhere, W, A, S, D or the left stick to move, the arrows, the right stick or the
+  mouse with its right button held to look, Space and Shift or the triggers to climb and sink.
+
+`--camera <mode>` starts with one, `--camera-cycle <seconds>` changes camera and car on its own.
+
+## Navigation
+
+Every screen works with the mouse, the keyboard and a gamepad (`navigation.rs`):
+
+| Action | Keyboard | Gamepad |
+| --- | --- | --- |
+| Move the focus | arrows, Tab / Shift+Tab | D-pad, left stick |
+| Change a stepper | left / right | D-pad, left stick |
+| Activate | Enter | A |
+| Back, cancel | Escape | B |
+| Other nickname (first screen) | F2 | Y |
+| Change tab: guest, sign in, new account (first screen) | | L1 / L2, R1 / R2 (since v0.1.15) |
+| Create a lobby (lobbies) | C | Y |
+| Unbind, give up (settings, while a binding listens) | Backspace, Escape | Start |
+
+Since v0.1.15 the focus moves past disabled widgets, with the arrows, the D-pad, the stick and Tab
+alike, on to the next usable one in that direction, or stays where it was: Bevy's navigation skips
+hidden widgets but not disabled ones, which draw no focus, so the focus seemed to go somewhere
+invisible before moving on (the user's report of 2026-11-23, on the first screen's greyed EDITOR,
+LEADERBOARD and ranked).
+| Leave the lobby (race) | Escape | Start |
+
+Moving the focus uses Bevy's automatic directional navigation, which picks the nearest widget in
+the direction from the layout, so no screen declares its navigation order. Tab is not "down": it
+goes through every visible widget in reading order (rows from the top, each from the left) and
+wraps around, so a widget sitting beside another, like the confirm button next to Cancel, is
+still reached. Left and right stay
+inside a focused text field. Buttons handle Enter themselves; the navigation system sends
+`Activate` for A, and for Enter on anything else (a lobby row joins, a text field submits).
+Clicking a widget focuses it, so the keyboard carries on from there. Key hints at the bottom of
+each screen follow the device used last.
+
+## On a touchscreen
+
+A phone in a browser is a different machine: a short screen held close, no keyboard, no pointer,
+and two thumbs already resting on the bottom corners. The client asks the browser rather than the
+player -- `(pointer: coarse)` in `matchMedia`, which is true of phones and tablets and false of a
+laptop that merely has a touch screen as well as a mouse -- and everything follows from the one
+`Touchscreen` resource it puts that answer in. `?touch` on the web, `--touch` natively, force it
+on to look at that interface anywhere.
+
+**The same screens, laid out for a window 400 logical pixels high** instead of 720, and allowed
+to shrink to 0.55 rather than 0.75 before they stop fitting. A phone's browser in landscape
+leaves the page 330 to 360 pixels of height while its address bar shows (915 by 356 on a common
+Android phone, 667 by 325 on a small iPhone), so at 400 a caption is still 9 to 10 pixels high;
+the first touch layout, at 440, came out about a tenth smaller. Nothing is a separate phone
+screen: each one passes the two sizes it cares about through `Touchscreen::pick`, so the
+difference lives in the line that draws the thing rather than in a copy of the screen. What
+changes beyond sizes:
+
+- **Everything a thumb presses is a thumb high.** `size_for_thumbs` gives every button and every
+  row that can be picked a minimum height of 46 units, and a stepper's arrows 46 square, about
+  7 mm on a phone, against the 34 a mouse is happy with. It does it once, as they appear, so no
+  screen has to.
+- **Text is typed in the browser's own box.** A phone shows its keyboard only for a text box of
+  the page, and the game draws its own fields, so tapping one opens the browser's prompt, named
+  after the field and filled with what it holds; what comes back replaces the field's text, and
+  cancelling leaves it alone (`type_on_touch`).
+- **A FULL SCREEN button**, on the login screen where the native game has QUIT and in the lobby
+  browser's header, while the page is not full screen and the browser can make it so. The
+  browser's bars take a seventh of the height; going full screen also turns the page to
+  landscape, the only time a browser lets a page lock its orientation. It is offered rather than
+  done on the first touch: taking the screen over without being asked is not the game's to do.
+  An iPhone's Safari cannot put a page full screen at all and never shows the button; there,
+  the game added to the home screen opens full screen and in landscape by itself (see
+  [Web](web.md#on-a-phone)).
+- **The notch, the rounded corners and the home bar are kept clear.** The page fills the whole
+  screen, notch to notch, so the race and the menus' backdrop reach into the corners; but
+  everything read or pressed stays inside the safe area the browser gives through CSS's
+  `env(safe-area-inset-*)` (`ui/safe_area.rs`). An iPhone held in landscape takes about 47
+  pixels from each side and 21 from the bottom, which put the left steering button half under
+  the notch and the cross on the bar that sends the phone home. `index.html` pads an invisible
+  element by those insets and the game reads its padding back twice a second: they change when
+  the phone is turned over, which resizes nothing, and when the page goes full screen. Two kinds
+  of root follow them: the HUD and the touch controls have their edges moved onto the safe
+  area's (`SafeInset`), so everything pinned to their corners comes in with them; the login
+  screen and the lobby browser add the insets to their padding (`SafePadding`), their
+  backgrounds still filling the screen. Centered dialogs are clear of the edges already.
+- **The lobby browser drops the details panel.** There is no room beside the list for it, and no
+  need: a row already gives the track, the players and what the lobby is doing, and **tapping the
+  row joins** (`tap_to_join`). A click only selects a row, for the panel and its JOIN button; the
+  first touch layout dropped the panel and kept that, so a phone could select a lobby and never
+  enter it. The players connected to the server stay under the list, on one row, and the line
+  under it only exists while there is a notice to read: three rows of lobbies fit instead of two.
+  In the header, CREATE LOBBY is just CREATE, under a title that already says what is being
+  created, the buttons keep their one line, and it is a long nickname that gives way, cut off.
+- **Lists scroll under a finger**, the content following it and stopping at either end, as a
+  phone's own lists do (`scroll_on_drag`): whichever ancestor of what the finger touched scrolls
+  vertically moves by the finger's travel, divided by the interface's scale. A finger that slid
+  more than 12 pixels on its way was scrolling, and lifting it taps nothing (`TouchTravel`).
+- **The race HUD moves out of the thumbs' way.** The gauges' circle, with the speed inside it, is
+  drawn smaller; the frame rate leaves the bottom right for the bottom edge,
+  between the two thumbs; the lap and time move down to make room for a **LEAVE** button, which a
+  screen with no Escape key and no Start button needs (the standings did, until v0.1.17).
+- **No key hints anywhere.** `hint_row` hides itself on a touchscreen, and the HUD does not ask
+  for its hint blocks at all.
+- **The creation dialog** gives up its padding and the line explaining each setting, grows wide
+  instead of tall, and puts laps, players to start and maximum players side by side, each with
+  its name above its arrows: one row each with arrows a thumb can hit does not fit 400 units.
+
+### The controls over the race
+
+`ui/touch.rs` draws them and reads them. Where they are, how large and how sharp is the
+player's to say (see [Settings](#settings)); what follows describes them as they come. Two buttons in the bottom left steer, and **where the
+thumb rests on them is how hard**, as a stick's angle is on a gamepad: nothing on the gap between
+them, three quarters on the middle of a button, full lock from 66 units out, on its outer part,
+and evenly in between. A mark follows the thumb along the buttons, and each lights up as hard as
+the car turns its way. The first version told the car left or right and nothing between, and at
+top speed full lock held for 0.4 s breaks the car into a drift (measured with the shipped tuning,
+which grips up to 80 % of full lock and breaks away from 85 %): on a phone every turn held a
+moment became a drift. Three quarters, where a thumb lands on a button, is a hard turn that
+still grips; pressing outward is the deliberate way into a drift, as is the drift branch.
+
+In the bottom right is a **cross**: touching it anywhere accelerates -- there is no brake, so the
+throttle is simply wherever the thumb lands -- and sliding from its hub onto a branch calls that
+branch's function without letting go of the throttle. **Drift is the first branch, straight up**:
+the shortest slide for a thumb on the hub, and on Android a 14 ms tick of the vibration motor
+says the thumb got there, so the eyes can stay on the road. **The turbo is the second branch, to
+the left**, toward the middle of the screen, where a right thumb folds more easily than it
+stretches toward the edge: arriving on it is the press, which fires a charge if the meter holds
+one, and the phone kicks for 70 ms as it fires. **The jump is the third, straight down** (since
+v0.1.48), a thumb pulled back toward the edge: arriving on it hops, staying on it holds the
+thruster (the branch is both the jump and the thrust). Since v0.1.69 the fourth, toward the edge, is the horn:
+arriving on it honks.
+
+**Neither thumb has to find its control again.** Anywhere in the bottom of the left half steers,
+up to 70 units above the buttons, as hard as the place it rests at; anywhere in the bottom of the
+right half accelerates, up to 70 units above the cross, and only within reach of the cross does it
+choose a branch. A thumb slipping off a button while the eyes are on the road used to let go of
+it. Two thumbs on the steering: the one put down last steers, as the last key pressed would.
+
+**A wall hit is felt.** On Android, a hit that takes more than 1.5 m/s from the player's own car
+knocks the phone for 4 ms per m/s, from 12 to 45 ms, at most every 0.3 s so that scraping along a
+wall is not one long buzz. It is measured as the camera's shake is, from the speed the car lost
+at once beyond anything driving does (see [Architecture](architecture.md#displaying-the-race)).
+A boost firing buzzes for 30 ms, softer than a hit. iOS lets no page vibrate.
+
+**A spectator picks the car to watch** with two round buttons where the thumbs rest, the left
+one watching the car ahead and the right one the car behind, as left and right do on a keyboard.
+They are ordinary buttons, tapped rather than held, and show only while there is more than one
+car to watch and nothing of the player's own to drive.
+
+They are hit-tested against `Touches` rather than picked as interface nodes. A thumb sliding from
+the hub onto a branch is one gesture on one control, and picking has no event for "the finger
+that pressed there is now here". The geometry is written once, in interface units, and both the
+nodes and the hit-testing are built from it; a touch is divided by `UiScale` to meet them. They
+are read before the input is sent, so a press reaches the server on the frame it was made,
+carrying the tick the player saw (see [Lobbies](lobbies.md#the-start)).
+
+## Pitfalls met
+
+Worth knowing before changing the interface:
+
+- **The first screen is entered before startup systems run.** Anything its `OnEnter` needs (the
+  fonts) must exist when plugins are built, and the camera it expects must be looked for every
+  frame, not once.
+- **A minimum height on a text node inflates its parent**: the text's intrinsic size is measured
+  in a way that adds to the panel's height. Put `min_height` on a box around the text.
+- **An editable text without `visible_lines` measures as tall as the space it is offered**, which
+  also inflates the panel around it.
+- **A list only scrolls if it cannot grow.** A column's flex items are as tall as their content
+  at least, unless told otherwise: the lobby list's panel grew with its rows and pushed everything
+  under it off the screen, and the list inside it never overflowed. Every box between the screen
+  and the list needs `min_height: px(0)`, and those that share what is left a `flex_basis` of 0.
+- **A node clips its children, not its own text.** To cut a long text off, put it in a box with
+  `overflow: clip` and `min_width: px(0)`, and give the text `TextLayout::no_wrap()`.
+- **A full-screen root stands in front of other roots unless it is `Pickable::IGNORE`**, even
+  with nothing drawn on it: the HUD's root swallowed the touches meant for the spectator's
+  buttons, which are in a root of their own, and which root comes first depends on the order
+  systems happened to run in.
+- **Every `Node` has a `UiTransform`**: a query on `UiTransform` needs a marker to target one node.
+- **A bundle must not contain the same component twice**, which panics at spawn. Style helpers
+  return fonts only, not colors or spacing, so they can be combined freely; to change a widget's
+  `Node`, insert a new one after spawning.
+- **Blending is linear**: 4 % of white over black reads as a clear grey. Surfaces use about 1 %.
+
+## Testing
+
+`--capture <file.png>` takes a screenshot of whichever screen the other options lead to, once it is
+ready (see [Architecture](architecture.md#testing)):
+
+| Options | Screenshot |
+| --- | --- |
+| none | the first screen |
+| `--guest`, or `--account N --password P` | the lobby list, once received |
+| the same, with `--create-dialog` | the creation dialog |
+| `--settings` | the settings, over the first screen |
+| the same, with `--quick-play` | the lobby quick play puts the player in |
+| `--account N --password P --ranked` | the ranked match, once the queue has found one |
+| the same, with `--lobby L` | the lobby, once its state and a car are displayed |
+
+Since v0.1.17 a capture or a recording (`--capture`, `--record`) opens its window out of sight
+(20,000 pixels off the screen) and without the focus, so it never pops up over the user's own game
+(the user's word on 2026-11-23). Not minimized: a minimized window draws nothing.
+
+`--guest` comes in under a generated name; `--account N --password P` signs in to an account, and
+creates it first with `--create`. A login the server refuses ends on the first screen, on the tab it
+was tried on, saying why.
+
+`--touch --window-size 844x390` shows any of them as a phone held in landscape does, which is how
+the touch interface is looked at without a phone. `--safe-area 0,47,21,47` (top, right, bottom,
+left, as CSS writes padding) adds an iPhone's notch, corners and home bar to it; `?safe_area=`
+does the same on the web, where the insets otherwise come from the browser. The window size is taken as logical pixels,
+scale factor and all, so the interface is laid out in exactly the size asked for. What a capture
+cannot show is a thumb: the pads only light up under a real finger, and the gestures themselves
+are covered by the tests in `ui/touch.rs`.
+
+A lobby created by `--lobby` races on the Odyssey, or on the track `--track` names; `--track`
+alone enters a lobby named after the track.
+
+The autopilot waits for the start on screen before pressing the accelerator, so its start is
+graded S, and a capture about 14 s after entering a lobby of one shows the grade over "GO!".
+
+With `--autopilot`, `--laps 1 --min-players 1` and a `--capture-delay` of about 95 s, the capture
+shows the results of a race (33 s on the skyway, whose lap was 30 s). A checkpoint passed is announced where the start grade was, CHECKPOINT
+and the gate's number out of the lap's, in green for 1.4 s, and a car brought back to one,
+BACK ON TRACK in magenta; while a car is off its course the same place counts it down, 3, 2, 1,
+over OFF TRACK or MISSED CHECKPOINT (see [Simulation](simulation.md#off-the-road)). `--autopilot-drift` drives the same lap drifting through the turns, so
+a capture mid-lap shows a car sliding with the DRIFT gauge filling. The game feel of the menus
+(animation, focus, gamepad) is left for a human to judge.

@@ -1,0 +1,8 @@
+[package]
+name = "star-racer-logger"
+version = "1.0.0-rc1"
+edition = "2024"
+license = "Unlicense"
+
+[dependencies]
+tracing-subscriber.workspace = true

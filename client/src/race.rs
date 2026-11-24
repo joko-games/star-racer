@@ -1,0 +1,769 @@
+//! The race as the player sees it: server snapshots, interpolated into smooth car movement.
+//!
+//! Snapshots arrive 60 times per second, but never exactly on time. The client estimates the
+//! server clock from them and displays the race slightly in the past, at
+//! [`INTERPOLATION_DELAY`], so there is almost always a snapshot on each side of the displayed
+//! moment to interpolate between.
+
+use std::collections::{HashMap, VecDeque};
+use std::f32::consts::{PI, TAU};
+
+use bevy::light::NotShadowCaster;
+use bevy::platform::time::Instant;
+use bevy::prelude::*;
+use star_racer_protocol::{CarId, CarLook, CarSnapshot, Snapshot};
+use star_racer_sim::TICK_SECONDS;
+use star_racer_sim::car::Car;
+use star_racer_sim::track::Surface;
+
+use crate::car_model::{self, Livery, Nozzle};
+use crate::lobby::CurrentLobby;
+use crate::net::NetEvent;
+use crate::prediction::{Prediction, predict};
+use crate::screen::Screen;
+use crate::track::CurrentTrack;
+use crate::weight::{CarBody, Sway};
+use crate::world;
+
+/// How far in the past the race is displayed, in seconds: three ticks.
+const INTERPOLATION_DELAY: f64 = 3.0 * TICK_SECONDS as f64;
+
+/// Share of the gap closed at each snapshot when snapshots arrive later than the clock estimate
+/// expects. Small, so one delayed snapshot barely moves the estimate, but a lasting delay is
+/// followed within a second or two.
+const CLOCK_CATCH_UP: f64 = 0.02;
+
+pub struct RacePlugin;
+
+impl Plugin for RacePlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<SnapshotBuffer>()
+            .init_resource::<Prediction>()
+            .init_resource::<RaceView>()
+            .init_resource::<Spectated>()
+            .add_systems(Startup, create_car_assets)
+            .add_systems(OnExit(Screen::Lobby), forget_race)
+            .add_systems(
+                Update,
+                (receive_snapshots, predict, choose_spectated, display_cars)
+                    .chain()
+                    .in_set(RaceUpdate)
+                    .run_if(in_state(Screen::Lobby)),
+            )
+            .add_systems(
+                Update,
+                (light_thrusters, stay_on_the_road)
+                    .after(RaceUpdate)
+                    .run_if(in_state(Screen::Lobby)),
+            );
+    }
+}
+
+/// Updates [`RaceView`] and the displayed cars. Whatever follows the cars runs after it.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RaceUpdate;
+
+/// The race as currently displayed, for the camera, the HUD and the autopilot.
+#[derive(Resource, Default)]
+pub struct RaceView {
+    /// Every car on the track.
+    pub cars: Vec<CarSnapshot>,
+    /// The player's own car, unless they spectate.
+    pub own_car: Option<Car>,
+    /// The car the camera follows: the player's own, or the one they watch.
+    pub followed: Option<(CarId, Car)>,
+    /// The player's own car as the server sent it, with its drift and boost gauges.
+    pub own_snapshot: Option<CarSnapshot>,
+    /// Height of the road under the followed car, for the camera.
+    pub followed_height: f32,
+    /// How the road climbs under the followed car (see `Surface::gradient`), so the camera can
+    /// climb and dive with it.
+    pub followed_gradient: Vec2,
+    /// The server tick displayed, between two ticks most of the time. `None` before the first
+    /// snapshot.
+    pub tick: Option<f64>,
+    /// The player's own timeline, ahead of the server, while their car is predicted: the clock
+    /// their start lights and race time follow, so the lights turn green when their car can go.
+    pub own_tick: Option<f64>,
+}
+
+/// The car a spectating player watches. `None` follows the leader.
+#[derive(Resource, Default)]
+pub struct Spectated(pub Option<CarId>);
+
+impl Spectated {
+    /// Watches the car `step` places behind the one watched now, in race order, wrapping around:
+    /// 1 is the car behind, -1 the car ahead. Nothing while there is no car to watch.
+    pub fn step(&mut self, view: &RaceView, step: i32) {
+        if view.cars.is_empty() {
+            return;
+        }
+        let mut order: Vec<_> = view.cars.iter().collect();
+        order.sort_by(|a, b| b.progress.total_cmp(&a.progress));
+        let current = view
+            .followed
+            .and_then(|(id, _)| order.iter().position(|car| car.id == id))
+            .unwrap_or(0);
+        let next = (current as i32 + step).rem_euclid(order.len() as i32) as usize;
+        self.0 = Some(order[next].id);
+    }
+}
+
+/// A car as drawn: placed on the road here, its body riding on springs over that place (see
+/// weight.rs).
+#[derive(Component)]
+pub struct CarVisual(pub CarId);
+
+/// The look a car is drawn in, so a car whose player's look arrives late is drawn again.
+#[derive(Component)]
+struct ShownLook(CarLook);
+
+/// What every car is drawn with: its meshes, one set per look, made the first time a look is
+/// seen, and the materials they share.
+#[derive(Resource)]
+pub struct CarAssets {
+    liveries: HashMap<CarLook, LiveryAssets>,
+    /// One thruster's flame, scaled to each nozzle.
+    flame: Handle<Mesh>,
+    /// Lit, colored by the meshes' own vertex colors.
+    hull_material: Handle<StandardMaterial>,
+    /// Unlit: the neon and the thrusters shine by themselves.
+    lights_material: Handle<StandardMaterial>,
+    /// Unlit and added to whatever is behind: the flames and the light under the car.
+    added_material: Handle<StandardMaterial>,
+    /// The dark oval under every car, and what draws it: unlit, laid over the road with the
+    /// transparency its vertices carry.
+    shadow: Handle<Mesh>,
+    shadow_material: Handle<StandardMaterial>,
+}
+
+/// The meshes of one look.
+#[derive(Clone)]
+struct LiveryAssets {
+    hull: Handle<Mesh>,
+    lights: Handle<Mesh>,
+    under_glow: Handle<Mesh>,
+}
+
+impl CarAssets {
+    fn livery(&mut self, look: CarLook, meshes: &mut Assets<Mesh>) -> LiveryAssets {
+        let look = look.checked();
+        self.liveries
+            .entry(look)
+            .or_insert_with(|| {
+                let livery = Livery::of(look);
+                LiveryAssets {
+                    hull: meshes.add(car_model::hull_geometry(&livery).into_mesh()),
+                    lights: meshes.add(car_model::lights_geometry(&livery).into_mesh()),
+                    under_glow: meshes.add(car_model::under_glow_geometry(&livery).into_mesh()),
+                }
+            })
+            .clone()
+    }
+}
+
+fn create_car_assets(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    commands.insert_resource(CarAssets {
+        liveries: HashMap::new(),
+        flame: meshes.add(car_model::flame_geometry().into_mesh()),
+        shadow: meshes.add(car_model::shadow_geometry().into_mesh()),
+        shadow_material: materials.add(StandardMaterial {
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..default()
+        }),
+        hull_material: materials.add(StandardMaterial {
+            perceptual_roughness: 0.42,
+            reflectance: 0.6,
+            ..default()
+        }),
+        lights_material: materials.add(StandardMaterial {
+            unlit: true,
+            ..default()
+        }),
+        added_material: materials.add(StandardMaterial {
+            unlit: true,
+            alpha_mode: AlphaMode::Add,
+            cull_mode: None,
+            ..default()
+        }),
+    });
+}
+
+/// Spawns a car drawn in `look` under `root`, and returns it: its body, which sways in a race
+/// (`racing`), with the hull, the lights and a flame at every nozzle, and on the road under it the
+/// shadow and the light. `car` is the race's car whose speed the flames follow; without one they
+/// burn as at rest. The garage shows its skimmer with this too.
+pub fn spawn_car(
+    commands: &mut Commands,
+    assets: &mut CarAssets,
+    meshes: &mut Assets<Mesh>,
+    look: CarLook,
+    car: Option<CarId>,
+    racing: bool,
+    root: impl Bundle,
+) -> Entity {
+    let livery = assets.livery(look, meshes);
+    let model = Livery::of(look).model;
+    let body = commands
+        .spawn((Transform::default(), Visibility::default()))
+        .id();
+    if racing {
+        commands.entity(body).insert(CarBody);
+    }
+    // Its turbo skin, drawn by turbo_fx from the tail back while a charge burns.
+    let rear = car_model::nozzles(model)
+        .iter()
+        .map(|nozzle| nozzle.at.x)
+        .fold(0.0_f32, f32::min);
+    commands.entity(body).insert(crate::turbo_fx::TurboSkinned {
+        turbo: look.turbo,
+        car,
+        rear,
+    });
+    let resting = car_model::flame_length(0.0, false, 0.0);
+    commands.entity(body).with_children(|parts| {
+        // The thruster under the hull: the flame mesh points back along `-x`, so it is turned
+        // to point down at the road. Hidden until the car thrusts; a car outside a race has none.
+        if let Some(id) = car {
+            parts.spawn((
+                LiftFlame(id),
+                Mesh3d(assets.flame.clone()),
+                MeshMaterial3d(assets.added_material.clone()),
+                Transform::from_xyz(0.0, 0.25, 0.0)
+                    .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
+                Visibility::Hidden,
+                NotShadowCaster,
+            ));
+        }
+        parts.spawn((
+            Mesh3d(livery.hull.clone()),
+            MeshMaterial3d(assets.hull_material.clone()),
+        ));
+        parts.spawn((
+            Mesh3d(livery.lights.clone()),
+            MeshMaterial3d(assets.lights_material.clone()),
+            NotShadowCaster,
+        ));
+        for nozzle in car_model::nozzles(model) {
+            parts.spawn((
+                Thrusters {
+                    car,
+                    nozzle: *nozzle,
+                },
+                Mesh3d(assets.flame.clone()),
+                MeshMaterial3d(assets.added_material.clone()),
+                Transform::from_translation(car_model::flame_origin(nozzle))
+                    .with_scale(car_model::flame_scale(nozzle, resting)),
+                NotShadowCaster,
+            ));
+        }
+    });
+    // On the road rather than on the body: the shadow and the light stay where the road is while
+    // the body sways over it.
+    let shadow = commands
+        .spawn((
+            OnTheRoad,
+            Mesh3d(assets.shadow.clone()),
+            MeshMaterial3d(assets.shadow_material.clone()),
+            NotShadowCaster,
+        ))
+        .id();
+    let glow = commands
+        .spawn((
+            OnTheRoad,
+            Mesh3d(livery.under_glow.clone()),
+            MeshMaterial3d(assets.added_material.clone()),
+            NotShadowCaster,
+        ))
+        .id();
+    commands
+        .spawn((root, ShownLook(look.checked())))
+        .add_children(&[body, shadow, glow])
+        .id()
+}
+
+fn forget_race(
+    mut commands: Commands,
+    mut view: ResMut<RaceView>,
+    mut spectated: ResMut<Spectated>,
+    visuals: Query<Entity, With<CarVisual>>,
+) {
+    *view = RaceView::default();
+    spectated.0 = None;
+    for visual in &visuals {
+        commands.entity(visual).despawn();
+    }
+}
+
+fn receive_snapshots(
+    mut events: MessageReader<NetEvent>,
+    mut buffer: ResMut<SnapshotBuffer>,
+    current: Res<CurrentLobby>,
+    time: Res<Time<Real>>,
+) {
+    for event in events.read() {
+        // Snapshots still on their way after leaving a lobby are not for this one.
+        if let NetEvent::Snapshot { snapshot, received } = event
+            && current.0.is_some()
+        {
+            buffer.push(snapshot.clone(), seconds_since_startup(&time, *received));
+        }
+    }
+}
+
+/// Left and right switch the watched car while spectating.
+fn choose_spectated(
+    mut spectated: ResMut<Spectated>,
+    view: Res<RaceView>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+    camera: Res<crate::spectator::SpectatorCamera>,
+) {
+    // Flying free, the keys move the camera instead.
+    if view.own_car.is_some()
+        || view.cars.is_empty()
+        || camera.mode == crate::spectator::CameraMode::Free
+    {
+        return;
+    }
+    let pressed = |keys: [KeyCode; 2], button: GamepadButton| {
+        keyboard.any_just_pressed(keys) || gamepads.iter().any(|pad| pad.just_pressed(button))
+    };
+    let step = if pressed([KeyCode::KeyA, KeyCode::ArrowLeft], GamepadButton::DPadLeft) {
+        -1
+    } else if pressed(
+        [KeyCode::KeyD, KeyCode::ArrowRight],
+        GamepadButton::DPadRight,
+    ) {
+        1
+    } else {
+        return;
+    };
+    // In race order, so right goes to the car behind.
+    spectated.step(&view, step);
+}
+
+fn display_cars(
+    mut commands: Commands,
+    mut buffer: ResMut<SnapshotBuffer>,
+    mut view: ResMut<RaceView>,
+    current: Res<CurrentLobby>,
+    spectated: Res<Spectated>,
+    prediction: Res<Prediction>,
+    mut assets: ResMut<CarAssets>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    time: Res<Time<Real>>,
+    track: Option<Res<CurrentTrack>>,
+    mut visuals: Query<(Entity, &CarVisual, &ShownLook, &mut Transform)>,
+) {
+    let own_id = current.0.as_ref().map(|membership| membership.car);
+    let now = time
+        .last_update()
+        .map(|frame| seconds_since_startup(&time, frame));
+    let mut cars = match now {
+        Some(now) => buffer.sample(now),
+        None => Vec::new(),
+    };
+    // The player's own car is predicted rather than interpolated (see prediction.rs), gauges and
+    // all; how far it is into the race stays what the server said.
+    let tuning = current
+        .0
+        .as_ref()
+        .and_then(|membership| membership.state.as_ref())
+        .map(|state| &state.tuning);
+    if let (Some(own_id), Some(predicted), Some(tuning)) = (own_id, prediction.car(), tuning)
+        && let Some(own) = cars.iter_mut().find(|car| car.id == own_id)
+    {
+        *own = CarSnapshot::new(own_id, predicted, own.progress, own.input_seq, tuning);
+    }
+    let find = |id: CarId| {
+        cars.iter()
+            .find(|car| car.id == id)
+            .map(|car| (id, car.car))
+    };
+    let leader = cars
+        .iter()
+        .max_by(|a, b| a.progress.total_cmp(&b.progress))
+        .map(|car| (car.id, car.car));
+    let own = own_id.and_then(find);
+    // The player's own car, or the watched one, or the leader.
+    let followed = own.or_else(|| spectated.0.and_then(find)).or(leader);
+    let surface = |car: &Car| match &track {
+        Some(track) => track.0.surface(car.position),
+        None => Surface {
+            height: 0.0,
+            gradient: Vec2::ZERO,
+        },
+    };
+
+    view.own_car = own.map(|(_, car)| car);
+    view.own_snapshot = own_id.and_then(|id| cars.iter().find(|car| car.id == id).copied());
+    view.followed = followed;
+    let followed_surface = followed.map(|(_, car)| surface(&car));
+    view.followed_height = followed_surface.map_or(0.0, |surface| surface.height);
+    view.followed_gradient = followed_surface.map_or(Vec2::ZERO, |surface| surface.gradient);
+    view.tick = buffer
+        .displayed_time()
+        .map(|time| time / f64::from(TICK_SECONDS));
+    view.own_tick = prediction.own_tick();
+
+    // Each player's look, as the lobby says it; a car seen before its player is drawn as the
+    // first skimmer, and again once the look arrives.
+    let look_of = |id: CarId| {
+        current
+            .0
+            .as_ref()
+            .and_then(|membership| membership.player(id))
+            .map_or(CarLook::default(), |player| player.look.checked())
+    };
+    let mut displayed = Vec::new();
+    for (entity, visual, shown, mut transform) in &mut visuals {
+        match cars.iter().find(|car| car.id == visual.0) {
+            Some(car) if shown.0 != look_of(car.id) => commands.entity(entity).despawn(),
+            Some(car) => {
+                *transform = car_transform(&car.car, surface(&car.car));
+                displayed.push(visual.0);
+            }
+            None => commands.entity(entity).despawn(),
+        }
+    }
+
+    for CarSnapshot { id, car, .. } in &cars {
+        if displayed.contains(id) {
+            continue;
+        }
+        spawn_car(
+            &mut commands,
+            &mut assets,
+            &mut meshes,
+            look_of(*id),
+            Some(*id),
+            true,
+            (
+                CarVisual(*id),
+                Sway::default(),
+                car_transform(car, surface(car)),
+                Visibility::default(),
+            ),
+        );
+    }
+    view.cars = cars;
+}
+
+/// A thruster's flame, which stretches with its car's speed and roars out on a boost. Without a
+/// car, as in the garage, it burns as at rest.
+#[derive(Component)]
+struct Thrusters {
+    car: Option<CarId>,
+    nozzle: Nozzle,
+}
+
+/// How fast a car goes, for its flames, as a share of this speed: a car at top speed burns at full.
+const FLAME_FULL_SPEED: f32 = 58.0;
+
+/// Stretches every car's flames to its speed, a boost throwing them far out, and makes them
+/// flicker, each car to its own beat.
+fn light_thrusters(
+    view: Res<RaceView>,
+    time: Res<Time>,
+    mut flames: Query<(&Thrusters, &mut Transform)>,
+) {
+    let now = time.elapsed_secs();
+    for (thrusters, mut transform) in &mut flames {
+        let Some(id) = thrusters.car else {
+            continue;
+        };
+        let Some(car) = view.cars.iter().find(|car| car.id == id) else {
+            continue;
+        };
+        let speed = car.car.velocity.length() / FLAME_FULL_SPEED;
+        let beat = f32::from(id.0) * 1.7;
+        let flicker = (now * 31.0 + beat).sin() * 0.6 + (now * 53.0 + beat * 2.3).sin() * 0.4;
+        let length = car_model::flame_length(speed, car.car.is_boosting(), flicker);
+        transform.scale = car_model::flame_scale(&thrusters.nozzle, length);
+    }
+}
+
+/// Seconds from app startup to `instant`. Snapshot arrival times and the current frame time both go
+/// through here, so they share one origin: `Time::elapsed` counts from the first frame instead,
+/// which starts most of a second after startup on a slow machine. Mixing the two once displayed
+/// the race 770 ms late instead of 50.
+pub(crate) fn seconds_since_startup(time: &Time<Real>, instant: Instant) -> f64 {
+    instant
+        .saturating_duration_since(time.startup())
+        .as_secs_f64()
+}
+
+/// A car resting on the road: at its height, leaning with its slope, its body turned into a drift.
+/// The car is drawn `altitude` over the road, along the road's own up, in a jump; its shadow and
+/// the light under it stay on the road (see `stay_on_the_road`).
+fn car_transform(car: &Car, surface: Surface) -> Transform {
+    let rotation = world::rotation_on_surface(car.body_heading(), surface.gradient);
+    Transform::from_translation(
+        world::position(car.position, surface.height) + rotation * Vec3::Y * car.altitude,
+    )
+    .with_rotation(rotation)
+}
+
+/// The shadow and the light under a car, which stay on the road while the car flies over it,
+/// smaller and fainter the higher it is.
+#[derive(Component)]
+struct OnTheRoad;
+
+/// The thruster's flame under a car, pointing down at the road while it pushes the car up.
+#[derive(Component)]
+struct LiftFlame(CarId);
+
+/// How fast the shadow and the light under a car shrink with its height: at 4 m, half their size.
+const SHADOW_SHRINK: f32 = 0.25;
+
+/// The flame under a thrusting car, as long as this many meters, about the hull's middle.
+const LIFT_FLAME_LENGTH: f32 = 1.6;
+const LIFT_FLAME_HALF: Vec2 = Vec2::new(0.55, 0.35);
+
+/// Keeps every car's shadow and light on the road under it, scaled to its height, and lights or
+/// puts out the flame of its thruster.
+fn stay_on_the_road(
+    view: Res<RaceView>,
+    track: Option<Res<CurrentTrack>>,
+    time: Res<Time>,
+    cars: Query<(&CarVisual, &Children)>,
+    mut on_road: Query<&mut Transform, (With<OnTheRoad>, Without<LiftFlame>)>,
+    mut lift: Query<(&LiftFlame, &mut Transform, &mut Visibility), Without<OnTheRoad>>,
+) {
+    let car = |id: CarId| view.cars.iter().find(|car| car.id == id).map(|car| car.car);
+    for (visual, children) in &cars {
+        let Some(state) = car(visual.0) else {
+            continue;
+        };
+        // Over a gap, beside the road or falling, there is no road under the car to throw them
+        // on.
+        let over_gap = track
+            .as_ref()
+            .is_some_and(|track| !track.0.over_road(&track.0.project(state.position)));
+        let scale = if state.altitude < 0.0 || over_gap {
+            0.0
+        } else {
+            1.0 / (1.0 + SHADOW_SHRINK * state.altitude)
+        };
+        for child in children {
+            if let Ok(mut transform) = on_road.get_mut(*child) {
+                transform.translation = Vec3::NEG_Y * state.altitude;
+                transform.scale = Vec3::new(scale, 1.0, scale);
+            }
+        }
+    }
+    let now = time.elapsed_secs();
+    for (flame, mut transform, mut visibility) in &mut lift {
+        let thrusting = car(flame.0).is_some_and(|car| car.thrusting);
+        *visibility = if thrusting {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        let flicker = 1.0 + 0.12 * (now * 37.0 + f32::from(flame.0.0)).sin();
+        transform.scale = Vec3::new(
+            LIFT_FLAME_LENGTH * flicker,
+            LIFT_FLAME_HALF.y,
+            LIFT_FLAME_HALF.x,
+        );
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct SnapshotBuffer {
+    /// In tick order: the connection is ordered.
+    snapshots: VecDeque<Snapshot>,
+    /// Local time minus server time, in seconds, for the least delayed snapshots.
+    clock_offset: Option<f64>,
+    /// The server time last displayed, in seconds.
+    displayed_time: Option<f64>,
+}
+
+impl SnapshotBuffer {
+    /// Adds a snapshot received at local time `received_at`, in seconds.
+    pub fn push(&mut self, snapshot: Snapshot, received_at: f64) {
+        let offset = received_at - server_time(snapshot.tick);
+        self.clock_offset = Some(match self.clock_offset {
+            // Later than expected: probably a delayed snapshot, follow slowly.
+            Some(current) if offset > current => current + (offset - current) * CLOCK_CATCH_UP,
+            // Earlier than expected: the estimate was pessimistic, adopt it.
+            _ => offset,
+        });
+        self.snapshots.push_back(snapshot);
+    }
+
+    /// The server time last displayed by [`SnapshotBuffer::sample`], in seconds.
+    pub fn displayed_time(&self) -> Option<f64> {
+        self.displayed_time
+    }
+
+    /// The server's time at local time `now`, in seconds, as far as the snapshots tell: the time
+    /// of a snapshot that would arrive now as promptly as the promptest ever did. It trails the
+    /// server's own clock by the way down, which the prediction's lead makes up for.
+    pub fn server_time(&self, now: f64) -> Option<f64> {
+        self.clock_offset.map(|offset| now - offset)
+    }
+
+    /// Every car at local time `now`, interpolated between the snapshots around the displayed
+    /// moment. Holds the latest state if no newer snapshot has arrived yet.
+    pub fn sample(&mut self, now: f64) -> Vec<CarSnapshot> {
+        let Some(offset) = self.clock_offset else {
+            return Vec::new();
+        };
+        let displayed_time = now - offset - INTERPOLATION_DELAY;
+        self.displayed_time = Some(displayed_time);
+
+        // Keep one snapshot at or before the displayed moment, drop the older ones.
+        while self
+            .snapshots
+            .get(1)
+            .is_some_and(|next| server_time(next.tick) <= displayed_time)
+        {
+            self.snapshots.pop_front();
+        }
+
+        let Some(from) = self.snapshots.front() else {
+            return Vec::new();
+        };
+        let Some(to) = self.snapshots.get(1) else {
+            return from.cars.clone();
+        };
+        let span = server_time(to.tick) - server_time(from.tick);
+        let t = ((displayed_time - server_time(from.tick)) / span).clamp(0.0, 1.0) as f32;
+        to.cars
+            .iter()
+            .map(|target| {
+                match from.cars.iter().find(|previous| previous.id == target.id) {
+                    Some(previous) => {
+                        let lerp = |from: f32, to: f32| from + (to - from) * t;
+                        CarSnapshot {
+                            id: target.id,
+                            car: interpolate(&previous.car, &target.car, t),
+                            progress: lerp(previous.progress, target.progress),
+                            drift_gauge: lerp(previous.drift_gauge, target.drift_gauge),
+                            boost_gauge: lerp(previous.boost_gauge, target.boost_gauge),
+                            turbo_gauge: lerp(previous.turbo_gauge, target.turbo_gauge),
+                            input_seq: target.input_seq,
+                            honks: target.honks,
+                        }
+                    }
+                    // Just joined: nothing to interpolate from.
+                    None => *target,
+                }
+            })
+            .collect()
+    }
+}
+
+fn server_time(tick: u32) -> f64 {
+    f64::from(tick) * f64::from(TICK_SECONDS)
+}
+
+/// Continuous values are interpolated; the drift side and flags are taken from the newer state.
+pub(crate) fn interpolate(from: &Car, to: &Car, t: f32) -> Car {
+    let lerp = |from: f32, to: f32| from + (to - from) * t;
+    Car {
+        position: from.position.lerp(to.position, t),
+        velocity: from.velocity.lerp(to.velocity, t),
+        heading: from.heading + shortest_angle(from.heading, to.heading) * t,
+        slip: lerp(from.slip, to.slip),
+        body: lerp(from.body, to.body),
+        body_rate: lerp(from.body_rate, to.body_rate),
+        steering: lerp(from.steering, to.steering),
+        yaw_rate: lerp(from.yaw_rate, to.yaw_rate),
+        drift_charge: lerp(from.drift_charge, to.drift_charge),
+        drift_held: lerp(from.drift_held, to.drift_held),
+        boost: lerp(from.boost, to.boost),
+        turbo: lerp(from.turbo, to.turbo),
+        turbo_boost: lerp(from.turbo_boost, to.turbo_boost),
+        altitude: lerp(from.altitude, to.altitude),
+        climb: lerp(from.climb, to.climb),
+        thrust: lerp(from.thrust, to.thrust),
+        ..*to
+    }
+}
+
+/// Signed angle from `from` to `to`, the short way around.
+pub fn shortest_angle(from: f32, to: f32) -> f32 {
+    (to - from + PI).rem_euclid(TAU) - PI
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::math::Vec2;
+
+    use super::*;
+
+    fn snapshot(tick: u32, x: f32, heading: f32) -> Snapshot {
+        Snapshot {
+            tick,
+            cars: vec![CarSnapshot {
+                id: CarId(0),
+                car: Car::new(Vec2::new(x, 0.0), heading),
+                progress: 0.0,
+                drift_gauge: 0.0,
+                boost_gauge: 0.0,
+                turbo_gauge: 0.0,
+                input_seq: 0,
+                honks: 0,
+            }],
+        }
+    }
+
+    const TICK: f64 = TICK_SECONDS as f64;
+
+    #[test]
+    fn interpolates_between_the_snapshots_around_the_displayed_moment() {
+        let mut buffer = SnapshotBuffer::default();
+        // Snapshots arrive exactly on time, one second of local time after server time zero.
+        for tick in 0..10 {
+            buffer.push(
+                snapshot(tick, tick as f32, 0.0),
+                1.0 + f64::from(tick) * TICK,
+            );
+        }
+        // At tick 8.5 in local time, the display is three ticks behind: tick 5.5.
+        let cars = buffer.sample(1.0 + 8.5 * TICK);
+        assert!((cars[0].car.position.x - 5.5).abs() < 1e-3, "{cars:?}");
+    }
+
+    #[test]
+    fn holds_the_latest_state_when_snapshots_stop() {
+        let mut buffer = SnapshotBuffer::default();
+        buffer.push(snapshot(0, 0.0, 0.0), 0.0);
+        buffer.push(snapshot(1, 1.0, 0.0), TICK);
+        let cars = buffer.sample(10.0);
+        assert_eq!(cars[0].car.position.x, 1.0);
+    }
+
+    #[test]
+    fn one_late_snapshot_barely_moves_the_clock() {
+        let mut buffer = SnapshotBuffer::default();
+        buffer.push(snapshot(0, 0.0, 0.0), 0.0);
+        buffer.push(snapshot(1, 1.0, 0.0), TICK + 0.2);
+        let offset = buffer.clock_offset.unwrap();
+        assert!(offset < 0.01, "{offset}");
+
+        // An early snapshot is adopted at once.
+        buffer.push(snapshot(2, 2.0, 0.0), 2.0 * TICK - 0.05);
+        assert!((buffer.clock_offset.unwrap() + 0.05).abs() < 1e-9);
+    }
+
+    #[test]
+    fn heading_interpolates_the_short_way_across_the_back() {
+        let from = snapshot(0, 0.0, PI - 0.1).cars[0].car;
+        let to = snapshot(1, 0.0, -PI + 0.1).cars[0].car;
+        let middle = interpolate(&from, &to, 0.5);
+        assert!(
+            (shortest_angle(middle.heading, PI)).abs() < 1e-4,
+            "{}",
+            middle.heading
+        );
+    }
+}
