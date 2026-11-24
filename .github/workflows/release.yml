@@ -92,14 +92,28 @@ jobs:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
 
+  # Published even when a build did not come back: macOS's hosted runners are often out of
+  # capacity (the job is then cancelled unacquired, twice for v1.0.0-rc2), and the user chose a
+  # release without macOS over none on 2026-11-24 ("Oui, sans macOS"). Windows and Linux are still
+  # required.
   release:
     needs: build
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: assets
           merge-multiple: true
+
+      - name: Check the required builds are there
+        run: |
+          ls -l assets
+          for required in star-racer-windows-x86_64.zip star-racer-linux-x86_64.tar.gz; do
+            [ -f "assets/$required" ] || { echo "::error::$required was not built"; exit 1; }
+          done
+          [ -f assets/star-racer-macos-arm64.tar.gz ] \
+            || echo "::warning::no macOS build this time: released without it"
 
       # The notes are the version's commit message, which says what changed and why.
       - uses: actions/checkout@v5

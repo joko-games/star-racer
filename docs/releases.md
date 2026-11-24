@@ -39,7 +39,10 @@ versions that only record a deployment. A tag can be released again by hand from
    `FONT-LICENSE.txt` (Saira's OFL), as `star-racer-windows-x86_64.zip`,
    `star-racer-linux-x86_64.tar.gz` and `star-racer-macos-arm64.tar.gz`.
 3. **Publishes** the release "Star Racer vX.Y.Z", marked latest, its notes the version's commit
-   message, which says what changed and why.
+   message, which says what changed and why. It publishes as long as Windows and Linux were built: GitHub's macOS
+   runners are often out of capacity, the job then cancelled without a runner (twice for
+   v1.0.0-rc2), and since v1.0.0-rc4 a release goes out without macOS rather than not at all, at
+   the user's word ("Oui, sans macOS").
 
 The names never change from one release to the next, so
 `https://github.com/star-racer/star-racer/releases/latest/download/<name>` always hands out the
