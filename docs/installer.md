@@ -54,6 +54,12 @@ A release without the installer or the feed is not published: the release job ch
 it does for the Windows and Linux zips. Updates are full packages, about the size of the zip; no
 delta packages are made, which would need the previous release's files at packing time.
 
+## Verified
+
+v1.0.0-rc7 was the first release with the installer (2026-11-24, Windows, Linux and macOS all
+built): the user downloaded `StarRacer-win-Setup.exe` from the release, installed the game and ran
+it ("C'est ok"). An update has not been seen yet: it needs a release after one installed.
+
 ## Not done
 
 - **Signing.** The installer and the game are unsigned, so SmartScreen asks before the first run

@@ -54,7 +54,8 @@ the French will go through (`client/src/i18n.rs`, only QUICK PLAY translated yet
      above, and the game's, the ring with a car from the side, which is the favicon and the
      program's icon (not deployed yet: the site still shows the old favicon);
    - a modern Windows installer and an auto-updater, done in v1.0.0-rc6 by Velopack
-     (docs/installer.md), to be seen working once a release is built with them;
+     (docs/installer.md); the installer checked by the user on the v1.0.0-rc7 release, an update
+     still to be seen with the next release;
    - a richer, more detailed ULTRA, more graphics levels, and a VERY LOW that is geometrically
      very simple yet fair: done in v1.0.0-rc7, six levels (docs/graphics.md#shapes), to be judged
      by the user, above all ULTRA's cars and VERY LOW's dark city.
