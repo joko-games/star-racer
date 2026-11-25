@@ -873,7 +873,7 @@ seconds, and at `ASTRAY_SECONDS` (2.4) the car is brought back to the last
 [checkpoint](tracks.md#checkpoints) it passed (`Car::checkpoint`), on the centerline, heading
 down the road at `RESPAWN_SPEED_SHARE` (0.6) of top speed, with its turbo meter and a full tank,
 and nothing else of what it was doing. Back on its course before that, the count is forgotten:
-2.4 s is long enough to fly a [shortcut](tracks.md#shortcuts), 140 m at top speed, and short
+2.4 s is long enough to fly a [shortcut](tracks.md#the-circuits-before-it), 140 m at top speed, and short
 enough that nobody waits for a car gone for good. A car that has fallen `FALL_BELOW` (15 m) under
 the lowest road of the track is brought back at once, there being nothing left under it.
 `Car::respawns` counts the times, so the server's progress knows the car was moved rather than

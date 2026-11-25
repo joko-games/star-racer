@@ -21,7 +21,7 @@ use crate::ui::widgets::{ButtonKind, button_of_size, panel};
 
 /// Where the releases are: the repository is public, and its releases are what the Release
 /// workflow publishes (docs/releases.md).
-const REPOSITORY: &str = "https://github.com/star-racer/star-racer";
+const REPOSITORY: &str = "https://github.com/joko-games/star-racer";
 
 /// Velopack's own moments, before anything else: when the installer, the updater or the uninstaller
 /// runs the game with its own arguments, it does what they ask and exits; and on a normal start it

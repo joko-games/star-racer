@@ -129,9 +129,10 @@ so it holds while the module is still loading:
   the game's shaders, which on a first visit holds the page still for half a minute or more
   (see [Protocol](protocol.md#handshake)). Its ring turns on the compositor, so it keeps turning
   while the page is held; without it a first visit was a black page, then a frozen one.
-- **The favicon.** `favicon.png`, the ring the user gave (since v1.0.0-rc2), shipped with
-  the page: `index.html` and `download.html` ask for `/favicon.png`, the site's root, which is the
-  game's own directory on the site's domain.
+- **The favicon.** Star Racer's logo (docs/logo.md), at the site's root as `favicon.png` and,
+  since v1.0.0-rc13, `favicon.ico`, which some browsers ask for whatever the page says. Every page
+  links both with `?v=2`, so a browser that kept the old ring in its cache fetches the logo again;
+  bump it when the icon changes.
 - **The home screen.** `manifest.webmanifest` (full screen, landscape, `icon.png` and
   `icon-192.png`) and Apple's `apple-mobile-web-app-*` meta tags: added to a phone's home screen,
   the game opens on its own, full screen and in landscape. It is the only way to full screen on an

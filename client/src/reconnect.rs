@@ -248,7 +248,7 @@ mod tests {
     fn settings() -> LobbySettings {
         LobbySettings {
             name: "Ada's lobby".into(),
-            track: "odyssey".into(),
+            track: "hippodrome".into(),
             laps: 3,
             min_players: 2,
             max_players: 8,

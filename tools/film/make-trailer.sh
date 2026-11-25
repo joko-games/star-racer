@@ -43,13 +43,13 @@ record() {
     # a: the racer, from the grid of a lobby of its own filled with fifteen bots, alone on the
     # machine (a second game client beside it slowed both, and the autopilot, a few frames late,
     # found the walls), at 1600x900 so the debug client keeps its pace while it records.
-    "$CLIENT" "${common[@]}" --identity "$OUT/id-a" --lobby "Grand Prix" --track cascade --laps 1 \
+    "$CLIENT" "${common[@]}" --identity "$OUT/id-a" --lobby "Grand Prix" --track hippodrome --laps 1 \
         --min-players 1 --bots 15 --autopilot-drift --window-size 1600x900 \
         --record "$OUT/a" --record-fps 30 --record-seconds 95
 
     # b: a spectator, its camera changing on its own, over a race a small client holds with
     # fifteen bots and drives, out of sight.
-    "$CLIENT" "${common[@]}" --identity "$OUT/id-host" --lobby "Watch" --track cascade --laps 3 \
+    "$CLIENT" "${common[@]}" --identity "$OUT/id-host" --lobby "Watch" --track hippodrome --laps 3 \
         --min-players 1 --bots 15 --autopilot-drift --window-size 320x180 > /dev/null 2>&1 &
     local host=$!
     sleep 8
@@ -124,7 +124,7 @@ loop() {
     trap 'kill $server 2>/dev/null || true' EXIT
     sleep 3
     "$CLIENT" --server "127.0.0.1:$PORT" --guest --volume 0 --clean --identity "$OUT/id-c" \
-        --lobby "Loop" --track cascade --laps 1 --min-players 1 --bots 15 --autopilot-drift \
+        --lobby "Loop" --track hippodrome --laps 1 --min-players 1 --bots 15 --autopilot-drift \
         --window-size 1600x900 --record "$OUT/c" --record-fps 30 --record-seconds 70
     kill $server 2>/dev/null || true
     trap - EXIT

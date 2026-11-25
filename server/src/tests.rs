@@ -16,7 +16,8 @@ use star_racer_protocol::ranked::{QueueStatus, RankedProfile};
 use star_racer_protocol::{
     self as protocol, CarId, CarLook, ClientMessage, Identity, JoinError, LobbyId, LobbyPhase,
     LobbySettings, LobbyState, LobbyStatus, LobbySummary, Login, OnlinePlayer, PROTOCOL_VERSION,
-    PlayerStatus, Presence, PublishError, RejectReason, ServerMessage, Snapshot, TrackInfo, WS_PATH,
+    PlayerStatus, Presence, PublishError, RejectReason, ServerMessage, Snapshot, TrackInfo,
+    WS_PATH,
 };
 use star_racer_sim::car::{Car, CarInput};
 use tokio::net::{TcpListener, TcpStream};
@@ -230,7 +231,7 @@ async fn next_players(
 fn settings(name: &str, min_players: u8, max_players: u8) -> LobbySettings {
     LobbySettings {
         name: name.into(),
-        track: "odyssey".into(),
+        track: "hippodrome".into(),
         laps: 3,
         min_players,
         max_players,
@@ -299,7 +300,7 @@ async fn welcome_lists_the_tracks_then_the_lobbies() {
     let (_socket, tracks, lobbies) = browse(&url).await;
 
     let keys: Vec<_> = tracks.iter().map(|track| track.key.as_str()).collect();
-    assert!(keys.contains(&"odyssey"), "{keys:?}");
+    assert!(keys.contains(&"hippodrome"), "{keys:?}");
     assert!(lobbies.is_empty(), "{lobbies:?}");
 }
 
@@ -587,9 +588,13 @@ async fn invalid_lobbies_are_refused() {
 
 /// The connection it replaced is told why, then closed.
 async fn assert_replaced(socket: &mut Client) {
-    wait_for(socket, "the rejection of a replaced connection", |message| {
-        (message == ServerMessage::Rejected(RejectReason::AlreadyConnected)).then_some(())
-    })
+    wait_for(
+        socket,
+        "the rejection of a replaced connection",
+        |message| {
+            (message == ServerMessage::Rejected(RejectReason::AlreadyConnected)).then_some(())
+        },
+    )
     .await;
     assert_closed(socket).await;
 }
@@ -638,9 +643,12 @@ async fn a_replaced_connection_leaves_its_lobby() {
     let ServerMessage::Welcome { .. } = handshake(&mut first, &key, &key).await else {
         panic!("expected Welcome");
     };
-    enter(&mut first, ClientMessage::CreateLobby(settings("Mine", 2, 8)))
-        .await
-        .expect("the lobby was not created");
+    enter(
+        &mut first,
+        ClientMessage::CreateLobby(settings("Mine", 2, 8)),
+    )
+    .await
+    .expect("the lobby was not created");
 
     let mut second = connect(&url).await;
     let ServerMessage::Welcome { .. } = handshake(&mut second, &key, &key).await else {
@@ -678,7 +686,11 @@ async fn protocol_mismatch_is_rejected() {
     let url = start_server().await;
     let mut socket = connect(&url).await;
     let key = auth::new_signing_key();
-    send(&mut socket, &hello(PROTOCOL_VERSION + 1, guest(GUEST), &key)).await;
+    send(
+        &mut socket,
+        &hello(PROTOCOL_VERSION + 1, guest(GUEST), &key),
+    )
+    .await;
 
     assert_eq!(
         receive(&mut socket).await,
@@ -694,7 +706,11 @@ async fn invalid_nickname_is_rejected() {
     let url = start_server().await;
     let mut socket = connect(&url).await;
     let key = auth::new_signing_key();
-    send(&mut socket, &hello(PROTOCOL_VERSION, new_account(" Tester"), &key)).await;
+    send(
+        &mut socket,
+        &hello(PROTOCOL_VERSION, new_account(" Tester"), &key),
+    )
+    .await;
 
     assert_eq!(
         receive(&mut socket).await,
@@ -790,7 +806,11 @@ async fn a_chosen_look_is_seen_in_the_lobby() {
         .await
         .expect("quick play failed");
     let state = next_state(&mut other).await;
-    let seen = state.players.iter().map(|player| player.look).collect::<Vec<_>>();
+    let seen = state
+        .players
+        .iter()
+        .map(|player| player.look)
+        .collect::<Vec<_>>();
     // Out of range brought back in, and what a new player has not unlocked put back to the free one.
     assert!(
         seen.contains(&star_racer_protocol::rewards::allowed(wild, 0)),
@@ -921,9 +941,7 @@ async fn quick_play_brings_players_together() {
     let state = next_state(&mut first).await;
     assert!(matches!(
         state.phase,
-        LobbyPhase::Waiting {
-            solo_tick: Some(_)
-        }
+        LobbyPhase::Waiting { solo_tick: Some(_) }
     ));
 
     let mut second = welcome_as(&url, "Grace").await;
@@ -978,9 +996,12 @@ async fn quick_play_again_right_after_leaving() {
 async fn quick_play_does_not_put_a_player_in_a_race_they_would_only_watch() {
     let url = start_server_with(brisk_timings()).await;
     let mut racer = welcome_as(&url, "Ada").await;
-    let (busy, _) = enter(&mut racer, ClientMessage::CreateLobby(settings("Busy", 1, 8)))
-        .await
-        .unwrap();
+    let (busy, _) = enter(
+        &mut racer,
+        ClientMessage::CreateLobby(settings("Busy", 1, 8)),
+    )
+    .await
+    .unwrap();
     // Past the grid: joining now would only be to watch.
     wait_for(&mut racer, "the race", |message| match message {
         ServerMessage::Snapshot(snapshot) if snapshot.tick > 12 => Some(()),
@@ -1031,7 +1052,12 @@ async fn a_ranked_match_from_the_queue_to_the_ladder() {
     let state = next_state(&mut grace).await;
     assert!(state.ranked);
     assert_eq!(state.players.len(), 2);
-    assert!(state.players.iter().all(|player| player.rating == Some(1000)));
+    assert!(
+        state
+            .players
+            .iter()
+            .all(|player| player.rating == Some(1000))
+    );
 
     // Nobody else can see or enter it.
     let mut other = welcome_as(&url, "Linus").await;
@@ -1061,7 +1087,10 @@ async fn a_ranked_match_from_the_queue_to_the_ladder() {
     .await;
     let profile = next_profile(&mut grace).await;
     assert_eq!(profile.rating, 1024);
-    assert_eq!((profile.games, profile.wins, profile.place), (1, 1, Some(1)));
+    assert_eq!(
+        (profile.games, profile.wins, profile.place),
+        (1, 1, Some(1))
+    );
 
     let board = wait_for(&mut grace, "the leaderboard", |message| match message {
         ServerMessage::Leaderboard(board) if board.len() == 2 => Some(board),
@@ -1148,7 +1177,11 @@ async fn circuits_from_the_editor_are_tried_and_published() {
 
     // Tried: a lobby of one, which the list never shows.
     let (mut guest, _, _) = browse(&url).await;
-    send(&mut guest, &ClientMessage::TryTrack(drafted("Mine", &tracks))).await;
+    send(
+        &mut guest,
+        &ClientMessage::TryTrack(drafted("Mine", &tracks)),
+    )
+    .await;
     let tried = wait_for(&mut guest, "the lobby", |message| match message {
         ServerMessage::JoinedLobby { settings, .. } => Some(settings),
         _ => None,
@@ -1157,7 +1190,11 @@ async fn circuits_from_the_editor_are_tried_and_published() {
     assert_eq!(tried.track, star_racer_protocol::TRY_TRACK);
     assert_eq!(tried.max_players, 1);
     let lobbies = next_lobbies(&mut watcher).await;
-    assert!(lobbies.iter().all(|lobby| lobby.settings.track != star_racer_protocol::TRY_TRACK));
+    assert!(
+        lobbies
+            .iter()
+            .all(|lobby| lobby.settings.track != star_racer_protocol::TRY_TRACK)
+    );
     // A circuit that does not build is refused.
     send(&mut guest, &ClientMessage::LeaveLobby).await;
     let mut broken = drafted("Broken", &tracks);
@@ -1168,7 +1205,11 @@ async fn circuits_from_the_editor_are_tried_and_published() {
     );
 
     // A guest cannot publish.
-    send(&mut guest, &ClientMessage::PublishTrack(drafted("Mine", &tracks))).await;
+    send(
+        &mut guest,
+        &ClientMessage::PublishTrack(drafted("Mine", &tracks)),
+    )
+    .await;
     let published = wait_for(&mut guest, "the answer", |message| match message {
         ServerMessage::Published(result) => Some(result),
         _ => None,
@@ -1229,7 +1270,9 @@ async fn feedback_is_received_from_the_menus_and_a_lobby() {
     let url = start_server().await;
     let (mut socket, _, _) = browse(&url).await;
     let received = |kept: bool| {
-        move |message: ServerMessage| (message == ServerMessage::FeedbackReceived(kept)).then_some(())
+        move |message: ServerMessage| {
+            (message == ServerMessage::FeedbackReceived(kept)).then_some(())
+        }
     };
     let feedback = |text: &str| ClientMessage::Feedback {
         text: text.into(),
@@ -1243,9 +1286,12 @@ async fn feedback_is_received_from_the_menus_and_a_lobby() {
 
     // Another connection has its own desk: from a lobby.
     let (mut other, _, _) = browse(&url).await;
-    enter(&mut other, ClientMessage::CreateLobby(settings("Notes", 2, 8)))
-        .await
-        .unwrap();
+    enter(
+        &mut other,
+        ClientMessage::CreateLobby(settings("Notes", 2, 8)),
+    )
+    .await
+    .unwrap();
     send(&mut other, &feedback("From a lobby")).await;
     wait_for(&mut other, "the feedback kept in a lobby", received(true)).await;
 }

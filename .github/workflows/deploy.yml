@@ -36,7 +36,7 @@ jobs:
   # it: that workflow owns the key. Nothing goes online on a red test.
   test:
     # A fork that pushes to its own main has no key and no business deploying anywhere.
-    if: github.repository == 'star-racer/star-racer' && vars.DEPLOY_HOST != ''
+    if: github.repository == 'joko-games/star-racer' && vars.DEPLOY_HOST != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

@@ -68,10 +68,11 @@ the French will go through (`client/src/i18n.rs`, only QUICK PLAY translated yet
    degrees); the editor's first version in v1.0.0-rc11 (docs/editor.md): the road laid piece by piece,
    each with its width, banking and height, closed by itself, tried alone and kept locally; next,
    what the user makes of it, and what is played on the road and the scenery. And the Knot, a short
-   circuit showing all of it, in v1.0.0-rc12 (docs/tracks.md#the-knot).
+   circuit showing all of it, in v1.0.0-rc12, taken out with every other circuit but a simple
+   Hippodrome in v1.0.0-rc13 (docs/tracks.md#the-circuits-before-it).
 
 Also waiting:
 
 - The small sound bug on the web, which the user is to describe.
 - Linux and macOS clients, which this Windows machine cannot build (the GitHub workflows could, now
-  that the repository has an account again: `star-racer/star-racer`).
+  that the repository has an account again: `joko-games/star-racer`).

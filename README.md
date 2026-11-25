@@ -1,13 +1,13 @@
 # Star Racer
 
-[![Build server](https://github.com/star-racer/star-racer/actions/workflows/build-server.yml/badge.svg)](https://github.com/star-racer/star-racer/actions/workflows/build-server.yml)
-[![Test server](https://github.com/star-racer/star-racer/actions/workflows/test-server.yml/badge.svg)](https://github.com/star-racer/star-racer/actions/workflows/test-server.yml)
-[![Build client (native)](https://github.com/star-racer/star-racer/actions/workflows/build-client-native.yml/badge.svg)](https://github.com/star-racer/star-racer/actions/workflows/build-client-native.yml)
-[![Build client (wasm)](https://github.com/star-racer/star-racer/actions/workflows/build-client-wasm.yml/badge.svg)](https://github.com/star-racer/star-racer/actions/workflows/build-client-wasm.yml)
-[![Deploy](https://github.com/star-racer/star-racer/actions/workflows/deploy.yml/badge.svg)](https://github.com/star-racer/star-racer/actions/workflows/deploy.yml)
-[![Release](https://github.com/star-racer/star-racer/actions/workflows/release.yml/badge.svg)](https://github.com/star-racer/star-racer/actions/workflows/release.yml)
+[![Build server](https://github.com/joko-games/star-racer/actions/workflows/build-server.yml/badge.svg)](https://github.com/joko-games/star-racer/actions/workflows/build-server.yml)
+[![Test server](https://github.com/joko-games/star-racer/actions/workflows/test-server.yml/badge.svg)](https://github.com/joko-games/star-racer/actions/workflows/test-server.yml)
+[![Build client (native)](https://github.com/joko-games/star-racer/actions/workflows/build-client-native.yml/badge.svg)](https://github.com/joko-games/star-racer/actions/workflows/build-client-native.yml)
+[![Build client (wasm)](https://github.com/joko-games/star-racer/actions/workflows/build-client-wasm.yml/badge.svg)](https://github.com/joko-games/star-racer/actions/workflows/build-client-wasm.yml)
+[![Deploy](https://github.com/joko-games/star-racer/actions/workflows/deploy.yml/badge.svg)](https://github.com/joko-games/star-racer/actions/workflows/deploy.yml)
+[![Release](https://github.com/joko-games/star-racer/actions/workflows/release.yml/badge.svg)](https://github.com/joko-games/star-racer/actions/workflows/release.yml)
 
-An online multiplayer racing game written in Rust with [Bevy](https://bevy.org).
+An online multiplayer racing game written in Rust with [Bevy](https://bevy.org). A game by **Joko Games**.
 The graphics are deliberately geometric.
 
 > **All the code is written by an AI.** Claude (Anthropic), through Claude Code, writes the code and the documentation, and makes the technical choices.
@@ -15,11 +15,10 @@ The graphics are deliberately geometric.
 
 ## Playing it
 
-**There is no website for now** (since 2026-11-17): the game is not online, and nothing is deployed.
-Build it and play it against a local server (below), or download an earlier client for Windows,
-Linux or macOS from the [releases](https://github.com/star-racer/star-racer/releases), the last
-being v0.1.46; with no server online, it too needs `--server` pointed at a local one
-(see [docs/releases.md](docs/releases.md)).
+The game is online on its site, in the browser, where the client for Windows (an installer that
+keeps it up to date), Linux and macOS is also offered, from the
+[releases](https://github.com/joko-games/star-racer/releases) (see [docs/releases.md](docs/releases.md)).
+Or build it and play it against a local server (below).
 
 ## Running locally
 

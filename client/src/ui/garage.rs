@@ -10,9 +10,11 @@
 //! choices and sent to the server, which shows it to everyone in the next lobby the player enters.
 //! Every car drives the same: this is how a car looks and sounds, never how it handles.
 
+use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
 use bevy::ui_widgets::Activate;
 use star_racer_protocol::rewards::{self, Reward};
 use star_racer_protocol::{
@@ -40,12 +42,17 @@ use crate::trail::{self, Effect, TRAIL_COLORS, TRAILS, TrailMaterial};
 const PREVIEW_AT: Vec3 = Vec3::new(2.6, 0.0, -8.5);
 /// How fast it turns, in radians per second.
 const TURN_RATE: f32 = 0.45;
+/// How far it turns as it is dragged, in radians per pixel the mouse or a finger moves across.
+const DRAG_RATE: f32 = 0.01;
+/// How long after it is let go it starts turning by itself again, in seconds.
+const DRAG_REST: f32 = 2.5;
 
 pub struct GaragePlugin;
 
 impl Plugin for GaragePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(Screen::Login), open_scripted)
+        app.init_resource::<Drag>()
+            .add_systems(OnEnter(Screen::Login), open_scripted)
             .add_systems(OnEnter(Screen::Garage), spawn_garage)
             .add_observer(pick_swatch)
             .add_observer(press_swatch)
@@ -59,6 +66,7 @@ impl Plugin for GaragePlugin {
                     show_preview,
                     play_horn,
                     preview_turbo,
+                    drag_preview,
                     turn_preview,
                     leave,
                 )
@@ -183,6 +191,8 @@ fn spawn_garage(
                 ..default()
             },
             panel(),
+            Card,
+            RelativeCursorPosition::default(),
         ))
         .with_children(|card| {
             card.spawn(Node {
@@ -227,12 +237,36 @@ fn spawn_garage(
     // small, and COLOR did not say it was the trail's. The titles only on a desk, a phone's screen
     // having no height to spare.
     for (group, part, label, value, count) in [
-        (Some("THE CAR"), Part::Model, "MODEL", look.model, CAR_MODELS),
+        (
+            Some("THE CAR"),
+            Part::Model,
+            "MODEL",
+            look.model,
+            CAR_MODELS,
+        ),
         (None, Part::Paint, "PAINT", look.paint, CAR_PAINTS),
         (None, Part::Neon, "NEON", look.neon, CAR_NEONS),
-        (Some("ITS TRAIL"), Part::Trail, "STYLE", look.trail, CAR_TRAILS),
-        (None, Part::TrailColor, "COLOR", look.trail_color, CAR_TRAIL_COLORS),
-        (Some("ITS EFFECTS"), Part::Horn, "HORN", look.horn, CAR_HORNS),
+        (
+            Some("ITS TRAIL"),
+            Part::Trail,
+            "STYLE",
+            look.trail,
+            CAR_TRAILS,
+        ),
+        (
+            None,
+            Part::TrailColor,
+            "COLOR",
+            look.trail_color,
+            CAR_TRAIL_COLORS,
+        ),
+        (
+            Some("ITS EFFECTS"),
+            Part::Horn,
+            "HORN",
+            look.horn,
+            CAR_HORNS,
+        ),
         (None, Part::Turbo, "TURBO", look.turbo, CAR_TURBOS),
     ] {
         if let Some(group) = group
@@ -464,7 +498,11 @@ fn press_swatch(
     }
 }
 
-fn pick(entity: Entity, swatches: &Query<&Swatch>, steppers: &mut Query<&mut Stepper>) -> Option<Entity> {
+fn pick(
+    entity: Entity,
+    swatches: &Query<&Swatch>,
+    steppers: &mut Query<&mut Stepper>,
+) -> Option<Entity> {
     let swatch = swatches.get(entity).ok()?;
     let mut stepper = steppers.get_mut(swatch.row).ok()?;
     stepper.value = swatch.value;
@@ -478,7 +516,8 @@ fn hover_swatches(
     swatch_entities: Query<Entity, With<Swatch>>,
 ) {
     for entity in &swatch_entities {
-        let (Ok((swatch, hover)), Ok(mut background)) = (hovered.get(entity), nodes.get_mut(entity))
+        let (Ok((swatch, hover)), Ok(mut background)) =
+            (hovered.get(entity), nodes.get_mut(entity))
         else {
             continue;
         };
@@ -748,7 +787,71 @@ fn show_preview(
     ));
 }
 
-fn turn_preview(time: Res<Time>, mut previews: Query<&mut Transform, With<Preview>>) {
+/// The card of rows, which a press must miss to turn the car.
+#[derive(Component)]
+struct Card;
+
+/// The car turned by hand (since v1.0.0-rc13, the user's word on 2026-11-25: "Fais qu'on puisse
+/// faire rotationner la voiture avec clique gauche et glisser, dans le garage"): the left button
+/// pressed off the card and dragged, or a finger, turns it; it turns by itself again a moment after
+/// it is let go.
+#[derive(Resource, Default)]
+struct Drag {
+    /// Whether the left button, pressed off the card and off any button, is still held.
+    mouse: bool,
+    /// When it may turn by itself again, in seconds since the start.
+    rest_until: f32,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn drag_preview(
+    mut drag: ResMut<Drag>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    motion: Res<AccumulatedMouseMotion>,
+    touches: Res<Touches>,
+    cards: Query<&RelativeCursorPosition, With<Card>>,
+    interactions: Query<&Interaction>,
+    time: Res<Time>,
+    mut previews: Query<&mut Transform, With<Preview>>,
+) {
+    let on_ui = cards.iter().any(RelativeCursorPosition::cursor_over)
+        || interactions
+            .iter()
+            .any(|interaction| *interaction != Interaction::None);
+    if buttons.just_pressed(MouseButton::Left) {
+        drag.mouse = !on_ui;
+    }
+    if !buttons.pressed(MouseButton::Left) {
+        drag.mouse = false;
+    }
+    let mut across = if drag.mouse { motion.delta.x } else { 0.0 };
+    // One finger on no button: a phone has no cursor to miss the card with, and the card's rows
+    // are buttons.
+    if touches.iter().count() == 1
+        && !interactions
+            .iter()
+            .any(|interaction| *interaction == Interaction::Pressed)
+    {
+        across += touches.iter().map(|touch| touch.delta().x).sum::<f32>();
+    }
+    if drag.mouse || touches.iter().next().is_some() {
+        drag.rest_until = time.elapsed_secs() + DRAG_REST;
+    }
+    if across != 0.0 {
+        for mut transform in &mut previews {
+            transform.rotate_y(across * DRAG_RATE);
+        }
+    }
+}
+
+fn turn_preview(
+    drag: Res<Drag>,
+    time: Res<Time>,
+    mut previews: Query<&mut Transform, With<Preview>>,
+) {
+    if time.elapsed_secs() < drag.rest_until {
+        return;
+    }
     for mut transform in &mut previews {
         transform.rotate_y(TURN_RATE * time.delta_secs());
     }
@@ -757,6 +860,65 @@ fn turn_preview(time: Res<Time>, mut previews: Query<&mut Transform, With<Previe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A press off the card dragged across turns the car, and it rests from turning by itself; a
+    /// press on the card turns nothing.
+    #[test]
+    fn dragging_turns_the_car() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<Drag>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .init_resource::<AccumulatedMouseMotion>()
+            .init_resource::<Touches>()
+            .add_systems(Update, (drag_preview, turn_preview).chain());
+        let card = app
+            .world_mut()
+            .spawn((Card, RelativeCursorPosition::default()))
+            .id();
+        let car = app
+            .world_mut()
+            .spawn((
+                Preview(CarLook::default(), Handle::default()),
+                Transform::default(),
+            ))
+            .id();
+        let turned = |app: &App| {
+            let (axis, angle) = app
+                .world()
+                .get::<Transform>(car)
+                .unwrap()
+                .rotation
+                .to_axis_angle();
+            axis.y.signum() * angle
+        };
+        let press = |app: &mut App, across: f32| {
+            let mut buttons = app.world_mut().resource_mut::<ButtonInput<MouseButton>>();
+            buttons.clear();
+            buttons.press(MouseButton::Left);
+            app.world_mut()
+                .resource_mut::<AccumulatedMouseMotion>()
+                .delta = Vec2::X * across;
+            app.update();
+        };
+        press(&mut app, 30.0);
+        let dragged = turned(&app);
+        assert!((dragged - 30.0 * DRAG_RATE).abs() < 0.05, "{dragged}");
+        assert!(app.world().resource::<Drag>().rest_until > 0.0);
+
+        // Let go, then pressed on the card: no turn.
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .release(MouseButton::Left);
+        app.update();
+        app.world_mut()
+            .get_mut::<RelativeCursorPosition>(card)
+            .unwrap()
+            .cursor_over = true;
+        let before = turned(&app);
+        press(&mut app, 30.0);
+        assert!((turned(&app) - before).abs() < 1e-3);
+    }
 
     /// The rows step round: past the last car comes the first.
     #[test]
@@ -778,6 +940,9 @@ mod tests {
     fn the_palettes_hold_every_color() {
         assert_eq!(Part::Paint.colors().len(), usize::from(CAR_PAINTS));
         assert_eq!(Part::Neon.colors().len(), usize::from(CAR_NEONS));
-        assert_eq!(Part::TrailColor.colors().len(), usize::from(CAR_TRAIL_COLORS));
+        assert_eq!(
+            Part::TrailColor.colors().len(),
+            usize::from(CAR_TRAIL_COLORS)
+        );
     }
 }

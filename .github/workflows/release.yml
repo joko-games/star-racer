@@ -107,7 +107,7 @@ jobs:
             --packDir package/star-racer \
             --mainExe star-racer-client.exe \
             --packTitle "Star Racer" \
-            --packAuthors "Star Racer" \
+            --packAuthors "Joko Games" \
             --icon logo/star-racer.ico \
             --splashImage logo/star-racer.png \
             --outputDir velopack

@@ -230,7 +230,9 @@ pub fn join_error_text(error: JoinError) -> &'static str {
         JoinError::InvalidSettings => "The server refused these lobby settings.",
         JoinError::UnknownTrack => "The server does not have this track.",
         JoinError::AccountRequired => "Ranked is for players with an account: sign in to play it.",
-        JoinError::InvalidTrack => "The server refused this circuit: it does not build, or the car does not fit it.",
+        JoinError::InvalidTrack => {
+            "The server refused this circuit: it does not build, or the car does not fit it."
+        }
     }
 }
 
@@ -346,7 +348,7 @@ fn receive_lobby_events(
     }
 }
 
-const SCRIPT_TRACK: &str = "odyssey";
+const SCRIPT_TRACK: &str = "hippodrome";
 
 /// Enters the scripted lobby once connected and listed.
 /// With `--rounds`, leaves the lobby `round_seconds` after entering it, the way a player does

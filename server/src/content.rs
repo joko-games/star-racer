@@ -332,9 +332,13 @@ mod tests {
     /// is its name in lower case with dashes, and a name with no letter nor digit makes none.
     #[test]
     fn published_tracks_are_kept_and_read_back() {
-        assert_eq!(user_track_key("Ada's  Loop!").as_deref(), Some("user-ada-s-loop"));
+        assert_eq!(
+            user_track_key("Ada's  Loop!").as_deref(),
+            Some("user-ada-s-loop")
+        );
         assert_eq!(user_track_key("--"), None);
-        let dir = std::env::temp_dir().join(format!("star-racer-user-tracks-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("star-racer-user-tracks-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let kept = UserTracks::kept_in(dir.clone());
         assert!(kept.load().is_empty(), "no directory is no track");
@@ -344,7 +348,8 @@ mod tests {
             id: PlayerId([7; 32]),
             name: "Ada".into(),
         };
-        kept.save("user-mine", &author, &odyssey.description).unwrap();
+        kept.save("user-mine", &author, &odyssey.description)
+            .unwrap();
         let loaded = kept.load();
         let mine = &loaded["user-mine"];
         assert_eq!(mine.author.as_ref(), Some(&author));
@@ -410,74 +415,6 @@ mod tests {
             };
             assert!(drift < grip, "{key}: drifting {drift} s, gripping {grip} s");
         }
-    }
-
-    /// Where a car set straight down the road `at` meters along the track `key`, `lateral` from its
-    /// centerline, is three seconds later, the jump held for `hold` seconds: how far along the
-    /// lap it has got, or nothing if it was brought back to a checkpoint on the way.
-    fn straight_on(key: &str, at: f32, lateral: f32, speed: f32, hold: f32) -> Option<f32> {
-        use star_racer_sim::car::{Car, CarInput};
-        use star_racer_sim::{TICK_RATE, TICK_SECONDS};
-        let tracks = load_tracks(&data_dir()).unwrap();
-        let tuning = load_car_tuning(&data_dir().join(CAR_TUNING_FILE), &tracks).unwrap();
-        let track = &tracks[key].track;
-        let point = track.point_at(at);
-        let mut car = Car::new(
-            point.position + point.direction.perp() * lateral,
-            point.direction.to_angle(),
-        );
-        car.velocity = point.direction * speed;
-        car.thrust = tuning.thrust_seconds;
-        car.checkpoint = track.gates().iter().rposition(|gate| *gate <= at).unwrap() as u8;
-        // Faster than the car goes by itself: on a boost, or on the turbo.
-        car.boost = if speed > tuning.top_speed { 3.0 } else { 0.0 };
-        car.turbo_boost = if speed > tuning.boost_top_speed { 3.0 } else { 0.0 };
-        for tick in 0..3 * TICK_RATE {
-            let held = (tick as f32 * TICK_SECONDS) < hold;
-            car.step(CarInput::new(true, 0.0).with_jump(held).with_thrust(held), &tuning, track);
-            if car.respawns > 0 {
-                return None;
-            }
-            if tick > TICK_RATE && !car.is_airborne() && !car.is_astray() {
-                return Some(track.project(car.position).distance - at);
-            }
-        }
-        None
-    }
-
-    /// The Odyssey's three shortcuts are there to be found, and cost what they should
-    /// (docs/tracks.md#shortcuts): the keyhole and the long way round are flown straight on over
-    /// the wall on the thruster, from top speed (until v0.1.51 the long way round needed the turbo,
-    /// the tank being smaller); the balcony is driven off through its breach, with nothing
-    /// pressed. Each skips hundreds of meters of road. A hop alone does not clear a wall. A change
-    /// to the track or to the car that closes one fails here.
-    #[test]
-    fn the_shortcuts_of_the_odyssey_are_there() {
-        // From the straight before the loop: later, the car flies into the banked road of its first turn.
-        let keyhole = straight_on("odyssey", 620.0, 0.0, 58.0, 1.6);
-        assert!(keyhole.is_some_and(|gained| gained > 400.0), "keyhole: {keyhole:?}");
-        // Without flying, or with a hop only, the wall holds the car on the road.
-        for hold in [0.0, 0.05] {
-            let held = straight_on("odyssey", 644.0, 0.0, 58.0, hold);
-            assert!(held.is_some_and(|gained| gained < 200.0), "keyhole, on the road: {held:?}");
-        }
-
-        let balcony = straight_on("odyssey", 2000.0, 0.0, 58.0, 0.0);
-        assert!(balcony.is_some_and(|gained| gained > 350.0), "balcony: {balcony:?}");
-
-        let long_way = straight_on("odyssey", 4275.0, 0.0, 58.0, 1.6);
-        assert!(long_way.is_some_and(|gained| gained > 400.0), "long way round: {long_way:?}");
-    }
-
-    /// Cascade's lasso is there to be cut the same way (docs/tracks.md#cascade): straight on over
-    /// the wall on the thruster from the end of the straight before it, about 430 m skipped; without
-    /// flying, the wall holds the car on the road.
-    #[test]
-    fn the_lasso_of_cascade_can_be_cut() {
-        let lasso = straight_on("cascade", 4362.0, 0.0, 58.0, 1.6);
-        assert!(lasso.is_some_and(|gained| gained > 350.0), "lasso: {lasso:?}");
-        let held = straight_on("cascade", 4362.0, 0.0, 58.0, 0.0);
-        assert!(held.is_some_and(|gained| gained < 200.0), "lasso, on the road: {held:?}");
     }
 
     /// Scenery is decoration, so building a track only checks that a prop stands off the road where

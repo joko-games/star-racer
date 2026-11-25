@@ -46,7 +46,7 @@ versions that only record a deployment. A tag can be released again by hand from
    the user's word ("Oui, sans macOS").
 
 The names never change from one release to the next, so
-`https://github.com/star-racer/star-racer/releases/latest/download/<name>` always hands out the
+`https://github.com/joko-games/star-racer/releases/latest/download/<name>` always hands out the
 newest build, and the site links to that.
 
 The builds are **not signed**: Windows SmartScreen asks before running one the first time, and

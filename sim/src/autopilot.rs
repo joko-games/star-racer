@@ -522,4 +522,32 @@ drift: {drift:?}"
         // Left of the centerline: steer right.
         assert!(drive(&car, &track).steer > 0);
     }
+
+    /// What a tick of a full race costs, sixteen cars on the autopilot: run by hand with the path
+    /// of a track file in `STAR_RACER_BENCH_TRACK`, `--ignored --nocapture`.
+    #[test]
+    #[ignore = "a measure, run by hand"]
+    fn a_full_field_costs() {
+        let Ok(path) = std::env::var("STAR_RACER_BENCH_TRACK") else {
+            return;
+        };
+        let text = std::fs::read_to_string(path).unwrap();
+        let track = Track::build(&ron::from_str(&text).unwrap()).unwrap();
+        let tuning = tuning();
+        let mut cars: Vec<Car> = (0..16).map(|slot| Car::on_grid(&track, slot)).collect();
+        let started = std::time::Instant::now();
+        let ticks = 1200;
+        for _ in 0..ticks {
+            for (index, car) in cars.iter_mut().enumerate() {
+                let personality = Personality::of(index as u32);
+                let input = drive_in_style_as(Style::Drift, &personality, car, &track);
+                car.step(input, &tuning, &track);
+            }
+        }
+        let tick = started.elapsed() / ticks;
+        println!(
+            "{} points, {tick:?} a tick for 16 cars",
+            track.points().len()
+        );
+    }
 }

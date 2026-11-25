@@ -11,6 +11,7 @@ fn main() {
     resource
         .set_icon("../logo/star-racer.ico")
         .set("ProductName", "Star Racer")
-        .set("FileDescription", "Star Racer");
+        .set("FileDescription", "Star Racer")
+        .set("CompanyName", "Joko Games");
     resource.compile().expect("compiles the program's icon (needs the Windows SDK's rc.exe)");
 }

@@ -6,8 +6,9 @@ black disk in a cyan neon ring, its line doubled as if drawn by hand, on nothing
 
 - **`logo/studio.svg`, the studio's**: the ring with a gamepad seen from above inside it, in the
   same neon. The user's word on 2026-11-24: "mon logo de boite de creation de jeux, le rond bleu
-  stylisé et tu ajoute une manette vue du dessus au milieu". The studio is to be named
-  "<something> Games" in time; the logo carries no name, so it waits for none.
+  stylisé et tu ajoute une manette vue du dessus au milieu". The studio is **Joko Games** since
+  2026-11-25 (the user's word: "Je suis maintenant la (presque) entreprise Joko Games"); the logo
+  carries no name.
 - **`logo/star-racer.svg`, the game's**: the same ring with a racing car seen from the side inside
   it, its rear wing up and two speed lines behind ("Fais le logo de Star Racer, le même cercle mais
   au milieu tu fais mets une voiture vue de coté"). It is the game's first logo: the site's
@@ -30,6 +31,7 @@ cargo run --release --manifest-path tools/icon/Cargo.toml --target-dir target/to
 | From | To | Size |
 | --- | --- | --- |
 | `star-racer.svg` | `site/favicon.png`, the site's and the game page's tab icon | 64 px |
+| `star-racer.svg` | `site/favicon.ico` (a copy of `logo/star-racer.ico`, since v1.0.0-rc13), for browsers that ask for `/favicon.ico` | 16 to 256 px |
 | | `client/web/icon.png`, `client/web/icon-192.png`, the page's home screen icons | 512, 192 px |
 | | `logo/star-racer.png` | 1024 px |
 | | `logo/star-racer.ico`, the Windows program's icon | 16 to 256 px |

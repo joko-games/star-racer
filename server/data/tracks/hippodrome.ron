@@ -1,0 +1,26 @@
+// The Hippodrome (v1.0.0-rc13): the one circuit shipped while circuits of quality are made, at the
+// user's word on 2026-11-25: "Supprime tous les niveaux, ne conserve qu'un circuit hyppodrome très
+// simple, on fera du niveau de qualité a la pelle plus tard". Two straights of 260 m and two half
+// turns of radius 45 banked 14 degrees, 32 m wide, 860 m round, the line in the middle of the first
+// straight.
+// The format is described in docs/tracks.md.
+(
+    name: "Hippodrome",
+    width: 32.0,
+    segments: [
+        Straight(length: 130.0),
+        Turn(angle: 180.0, radius: 45.0, transition: 30.0, banking: 14.0),
+        Straight(length: 260.0),
+        Turn(angle: 180.0, radius: 45.0, transition: 30.0, banking: 14.0),
+        Straight(length: 130.0),
+    ],
+    // Halfway round, on the far straight.
+    checkpoints: [431.0],
+    scenery: [
+        Gantry(at: 0.0),
+        Grandstand(at: 760.0, side: Right, offset: 4.0, length: 90.0),
+        Grandstand(at: 400.0, side: Right, offset: 4.0, length: 180.0),
+        Skyline(at: 140.0, side: Right, offset: 12.0, length: 220.0, depth: 80.0, height: 40.0),
+        Skyline(at: 635.0, side: Right, offset: 12.0, length: 220.0, depth: 80.0, height: 44.0),
+    ],
+)

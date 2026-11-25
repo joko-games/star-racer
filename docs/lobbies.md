@@ -148,7 +148,7 @@ counts against it and crossing the line back and forth gains nothing. Cars on th
 meters below zero.
 
 It cannot be cheated (since v0.1.49, the user's word "Ajoute des checkpoints pour eviter les
-exploits"), and since v0.1.50 a [shortcut](tracks.md#shortcuts) counts in full: a car that flies
+exploits"), and since v0.1.50 a [shortcut](tracks.md#the-circuits-before-it) counts in full: a car that flies
 from one part of the road to another between the same two gates has got there, and its progress
 takes the whole step. What stops a cut across the lap is the car's course
 ([Simulation](simulation.md#off-the-road)): past the next [checkpoint](tracks.md#checkpoints) it

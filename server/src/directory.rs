@@ -17,8 +17,8 @@ use star_racer_protocol::ranked::{LeaderboardEntry, RankedProfile};
 use star_racer_protocol::{
     JoinError, LobbyId, LobbySettings, OnlinePlayer, Presence, PublishError, TRY_TRACK, TrackInfo,
 };
-use star_racer_sim::track::TrackDescription;
 use star_racer_sim::car::CarTuning;
+use star_racer_sim::track::TrackDescription;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::{self, MissedTickBehavior};
 use tracing::{error, info};
@@ -38,9 +38,9 @@ const COMMAND_BUFFER: usize = 256;
 /// How often the matchmaker looks at the queue.
 const MATCHMAKING_PERIOD: Duration = Duration::from_millis(250);
 
-/// Laps of a ranked race, and of the lobbies quick play opens: two of the Odyssey's 5 km, a
-/// little under three minutes. Three until v0.1.49, when a lap took half a minute.
-const LAPS: u8 = 2;
+/// Laps of a ranked race, and of the lobbies quick play opens: five of the Hippodrome, about a
+/// minute and a half (two of the Odyssey from v0.1.49 to v1.0.0-rc12).
+const LAPS: u8 = 5;
 /// How many players a lobby quick play opens wants, and holds.
 const QUICK_PLAY_MIN_PLAYERS: u8 = 2;
 const QUICK_PLAY_MAX_PLAYERS: u8 = 8;
@@ -493,7 +493,11 @@ impl Registry {
     /// The track a new quick play lobby or ranked match races on, in turn among the game's own:
     /// the circuits players published are raced in the lobbies they open.
     fn next_track(&self) -> Option<(&String, &Arc<LoadedTrack>)> {
-        let official = || self.tracks.iter().filter(|(_, loaded)| loaded.author.is_none());
+        let official = || {
+            self.tracks
+                .iter()
+                .filter(|(_, loaded)| loaded.author.is_none())
+        };
         let turn = self.next_id as usize % official().count().max(1);
         official().nth(turn)
     }
@@ -544,11 +548,17 @@ impl Registry {
         description: TrackDescription,
         author: Author,
     ) -> Result<String, PublishError> {
-        let key = content::user_track_key(&description.name)
-            .ok_or_else(|| PublishError::Invalid("the circuit needs a name of 1 to 32 characters, with a letter or a digit".into()))?;
+        let key = content::user_track_key(&description.name).ok_or_else(|| {
+            PublishError::Invalid(
+                "the circuit needs a name of 1 to 32 characters, with a letter or a digit".into(),
+            )
+        })?;
         let name = description.name.trim().to_lowercase();
         let taken = self.tracks.iter().any(|(other, loaded)| {
-            let theirs = loaded.author.as_ref().is_some_and(|other| other.id == author.id);
+            let theirs = loaded
+                .author
+                .as_ref()
+                .is_some_and(|other| other.id == author.id);
             (other == &key || loaded.description.name.trim().to_lowercase() == name) && !theirs
         });
         if taken {
@@ -556,7 +566,8 @@ impl Registry {
         }
         let track = content::check_user_track(&description, &self.tuning.borrow())?;
         let user_tracks = self.user_tracks.clone();
-        let (file_key, file_author, file_description) = (key.clone(), author.clone(), description.clone());
+        let (file_key, file_author, file_description) =
+            (key.clone(), author.clone(), description.clone());
         tokio::task::spawn_blocking(move || {
             if let Err(problem) = user_tracks.save(&file_key, &file_author, &file_description) {
                 error!("the published track {file_key} could not be saved: {problem:#}");

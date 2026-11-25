@@ -31,7 +31,7 @@ player, and a failure to reach GitHub is only logged.
   uninstaller runs the game with their own arguments, it does what they ask and exits; on a normal
   start it puts in place an update downloaded the time before.
 - `UpdatePlugin` starts a thread that makes an `UpdateManager` on a `GithubSource` for
-  `star-racer/star-racer` (prereleases included, the release candidates being named so), checks,
+  `joko-games/star-racer` (prereleases included, the release candidates being named so), checks,
   and downloads. The thread hands the version found to the first screen through a shared slot;
   RESTART calls `apply_updates_and_restart`.
 - The `velopack` crate is pinned (`=1.3.39-g8d2844f`) to the `vpk` tool that packs the release,

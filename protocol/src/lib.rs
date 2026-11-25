@@ -923,7 +923,7 @@ mod tests {
     fn lobby_settings_validation() {
         let settings = LobbySettings {
             name: "Friday night".into(),
-            track: "odyssey".into(),
+            track: "hippodrome".into(),
             laps: 3,
             min_players: 2,
             max_players: 8,

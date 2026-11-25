@@ -12,7 +12,7 @@ use bevy::ui::auto_directional_navigation::AutoDirectionalNavigation;
 use bevy::ui::{InteractionDisabled, Pressed};
 use bevy::ui_widgets::{Activate, Button};
 
-use super::navigation::LastInput;
+use super::navigation::{LastInput, PointerLeads};
 use super::theme::{self, Fonts};
 use super::touch::Touchscreen;
 
@@ -120,6 +120,7 @@ fn focus_glow(color: Color) -> BoxShadow {
 
 fn style_buttons(
     focus: Res<InputFocus>,
+    pointer: Res<PointerLeads>,
     mut buttons: Query<(
         Entity,
         &ButtonKind,
@@ -146,7 +147,7 @@ fn style_buttons(
     ) in &mut buttons
     {
         let focused = focus.get() == Some(entity) && !disabled;
-        let hovered = hovered.get() && !disabled;
+        let hovered = hovered.get() && !disabled && pointer.0;
         let (fill, edge, text) = match kind {
             ButtonKind::Primary => {
                 let fill = if disabled {
@@ -417,6 +418,7 @@ fn ask_for_text(name: &str, current: &str) -> Option<String> {
 
 fn style_fields(
     focus: Res<InputFocus>,
+    pointer: Res<PointerLeads>,
     mut fields: Query<
         (
             Entity,
@@ -437,7 +439,7 @@ fn style_fields(
         };
         *border = BorderColor::all(if focused {
             theme::NEON
-        } else if hovered.get() {
+        } else if hovered.get() && pointer.0 {
             theme::NEON_DIM
         } else {
             theme::PANEL_BORDER
@@ -464,6 +466,7 @@ pub struct Selectable;
 
 fn style_selectables(
     focus: Res<InputFocus>,
+    pointer: Res<PointerLeads>,
     mut selectables: Query<
         (
             Entity,
@@ -479,7 +482,7 @@ fn style_selectables(
         let focused = focus.get() == Some(entity);
         background.0 = if focused {
             theme::NEON_FAINT
-        } else if hovered.get() {
+        } else if hovered.get() && pointer.0 {
             theme::SURFACE_ROW_HOVER
         } else {
             theme::SURFACE_ROW

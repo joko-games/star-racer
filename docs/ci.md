@@ -79,7 +79,7 @@ would then break deployments with a confusing error, and what pinning defends ag
 answering for this host on a GitHub runner's first connection to it — is outside what this project
 defends against (see [Deployment](deploy.md#what-this-deliberately-does-not-do)).
 
-Forks do not deploy: the job is skipped unless the repository is `star-racer/star-racer`, and a
+Forks do not deploy: the job is skipped unless the repository is `joko-games/star-racer`, and a
 fork has no key in any case.
 
 ## Why this could not exist before

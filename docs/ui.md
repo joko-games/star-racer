@@ -71,6 +71,10 @@ ranked match. Each screen's entities despawn when it is left.
   (`SetLook`), and goes back to the first screen. It needs no connection. Every car drives the
   same: the look is drawn, never simulated (see
   [Architecture](architecture.md#displaying-the-race)). `--garage` opens it, to capture it.
+  Since v1.0.0-rc13 the car is turned by hand (the user's word on 2026-11-25: "Fais qu'on puisse
+  faire rotationner la voiture avec clique gauche et glisser, dans le garage"): the left button
+  pressed anywhere off the card and off any button, then dragged across, or a finger, turns it
+  (`DRAG_RATE`, 0.01 radian a pixel); it turns by itself again 2.5 s after it is let go.
 - **Lobbies** (`lobbies.rs`): every lobby, live, with its track, players and a status badge; the
   focused lobby's details beside the list (track thumbnail, what joining means right now, who is
   in). A header shows the player's nickname, HOME back to the first screen, and the button to
@@ -368,7 +372,7 @@ Every screen works with the mouse, the keyboard and a gamepad (`navigation.rs`):
 | Action | Keyboard | Gamepad |
 | --- | --- | --- |
 | Move the focus | arrows, Tab / Shift+Tab | D-pad, left stick |
-| Change a stepper | left / right | D-pad, left stick |
+| Change a stepper | left / right | D-pad left / right, left stick |
 | Activate | Enter | A |
 | Back, cancel | Escape | B |
 | Other nickname (first screen) | F2 | Y |
@@ -392,6 +396,26 @@ inside a focused text field. Buttons handle Enter themselves; the navigation sys
 `Activate` for A, and for Enter on anything else (a lobby row joins, a text field submits).
 Clicking a widget focuses it, so the keyboard carries on from there. Key hints at the bottom of
 each screen follow the device used last.
+
+**Made coherent in v1.0.0-rc13** (the user's word on 2026-11-25: "Verifie et fix si besoin la
+navigation dans l'UI, le passage du focus, entre autres entre la navigation croix
+directionnel/joystick/clavier, ca doit etre vraiment cohérent"). Found and fixed:
+
+- **The arrows, the D-pad and the stick move the focus alike**: once when pressed, then again
+  after 0.4 s held and every 0.12 s after that (`REPEAT_DELAY`, `REPEAT_INTERVAL`). Only the stick
+  repeated before; an arrow or the D-pad held moved the focus once, and stepping a stepper far
+  meant pressing again and again with them but not with the stick. A press let go within a frame
+  still counts, and a press of a new direction takes over at once (`Repeat::next`).
+- **Two widgets lit at once**: the hover and the focus were drawn alike, so after the mouse rested
+  on one button and the keyboard moved to another, both were lit and Enter went to one of them.
+  Now the focus follows the mouse while it moves (onto any widget but a text field, which takes
+  the focus when clicked, so typing is never taken away), and the hover is drawn only while the
+  mouse leads (`PointerLeads`): an arrow, the D-pad, the stick, Tab or A hands the lead back to
+  the focus and the hover goes dark.
+- **Nothing focused**: with no focus, or the focus on a widget gone or hidden, a direction or Tab
+  did nothing; it now focuses the first widget in reading order.
+- **The editor's arrows** pan its map, as WASD do: they no longer also move the focus through its
+  panel, which the D-pad, the stick and Tab still reach.
 
 ## On a touchscreen
 

@@ -18,9 +18,9 @@ use std::time::{Duration, Instant};
 
 use axum::body::Bytes;
 use star_racer_protocol::{
-    self as protocol, CarId, CarLook, CarSnapshot, JoinError, LobbyId, LobbyPhase, LobbyPlayer,
-    LobbySettings, LobbyState, LobbyStatus, LobbySummary, MAX_INPUT_LEAD, PlayerStatus, RaceResult,
-    RatingChange, ServerMessage, Snapshot, XpGain, HONK_EVERY_TICKS, rewards,
+    self as protocol, CarId, CarLook, CarSnapshot, HONK_EVERY_TICKS, JoinError, LobbyId,
+    LobbyPhase, LobbyPlayer, LobbySettings, LobbyState, LobbyStatus, LobbySummary, MAX_INPUT_LEAD,
+    PlayerStatus, RaceResult, RatingChange, ServerMessage, Snapshot, XpGain, rewards,
 };
 use star_racer_sim::autopilot;
 use star_racer_sim::car::{Car, CarInput, CarTuning};
@@ -596,15 +596,24 @@ impl Lobby {
 
     /// Fills a quick play lobby with the pool's bots, up to [`QUICK_PLAY_FILL`] cars.
     fn fill_with_bots(&mut self) {
-        let racers =
-            |lobby: &Self| lobby.members.iter().filter(|member| !member.player.watching).count();
+        let racers = |lobby: &Self| {
+            lobby
+                .members
+                .iter()
+                .filter(|member| !member.player.watching)
+                .count()
+        };
         while racers(self) < QUICK_PLAY_FILL && self.add_bot() {}
     }
 
     /// Adds a car the server drives, if there is room: named and painted from the bots' pool, a
     /// look among the free ones, marked as a bot wherever players are listed.
     fn add_bot(&mut self) -> bool {
-        let number = self.members.iter().filter(|member| member.player.bot).count() as u8;
+        let number = self
+            .members
+            .iter()
+            .filter(|member| member.player.bot)
+            .count() as u8;
         let seed = u32::from(self.next_car) * 7919 + u32::from(self.id.0) * 104_729;
         let mut id = [0xB0; 32];
         id[1..5].copy_from_slice(&self.id.0.to_le_bytes());
@@ -620,7 +629,11 @@ impl Lobby {
         };
         // A name nobody in the lobby has (since v1.0.0-rc4: a full grid showed two of each in the
         // standings), from the pool in turn after the seed's, then numbered past its end.
-        let taken = |name: &str| self.members.iter().any(|member| member.player.nickname == name);
+        let taken = |name: &str| {
+            self.members
+                .iter()
+                .any(|member| member.player.nickname == name)
+        };
         let first = seed as usize % BOT_NAMES.len();
         let nickname = (0..BOT_NAMES.len())
             .map(|step| format!("BOT {}", BOT_NAMES[(first + step) % BOT_NAMES.len()]))
@@ -905,7 +918,10 @@ impl Lobby {
     /// Lines every player up on the grid, in the order they joined.
     fn start_race(&mut self) {
         let track = &self.track.track;
-        let racers = self.members.iter_mut().filter(|member| !member.player.watching);
+        let racers = self
+            .members
+            .iter_mut()
+            .filter(|member| !member.player.watching);
         for (slot, member) in racers.enumerate() {
             member.status = PlayerStatus::Racing;
             member.start.reset();
@@ -1000,7 +1016,11 @@ impl Lobby {
                 finished += 1;
                 finished - 1
             });
-            let Some(member) = self.members.iter().find(|member| member.car_id == result.car) else {
+            let Some(member) = self
+                .members
+                .iter()
+                .find(|member| member.car_id == result.car)
+            else {
                 continue;
             };
             if member.player.bot {
@@ -1079,7 +1099,10 @@ impl Lobby {
     fn hand_cars_back(&mut self) {
         let mut handed = false;
         for member in &mut self.members {
-            if matches!(member.status, PlayerStatus::Finished { .. } | PlayerStatus::Retired) {
+            if matches!(
+                member.status,
+                PlayerStatus::Finished { .. } | PlayerStatus::Retired
+            ) {
                 member.status = PlayerStatus::Driving;
                 handed = true;
             }
@@ -1112,7 +1135,9 @@ impl Lobby {
                     PlayerStatus::Driving if !results => {}
                     // The race is over: every car carries on by itself while the results show,
                     // whether or not it crossed the line.
-                    PlayerStatus::Driving | PlayerStatus::Finished { .. } | PlayerStatus::Retired => {
+                    PlayerStatus::Driving
+                    | PlayerStatus::Finished { .. }
+                    | PlayerStatus::Retired => {
                         let input = self_driven(member.car_id, &member.car, track);
                         member.car.step(input, &self.tuning, track);
                     }
@@ -1343,18 +1368,18 @@ mod tests {
     use crate::content;
     use crate::session::PlayerId;
 
-    fn odyssey() -> (Arc<LoadedTrack>, CarTuning) {
+    fn shipped() -> (Arc<LoadedTrack>, CarTuning) {
         let data_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
         let tracks = content::load_tracks(&data_dir).unwrap();
         let tuning =
             content::load_car_tuning(&data_dir.join(content::CAR_TUNING_FILE), &tracks).unwrap();
-        (Arc::clone(&tracks["odyssey"]), tuning)
+        (Arc::clone(&tracks["hippodrome"]), tuning)
     }
 
     fn settings(laps: u8, min_players: u8, max_players: u8) -> LobbySettings {
         LobbySettings {
             name: "Test".into(),
-            track: "odyssey".into(),
+            track: "hippodrome".into(),
             laps,
             min_players,
             max_players,
@@ -1378,15 +1403,8 @@ mod tests {
     }
 
     fn new_lobby_of_kind(settings: LobbySettings, timings: Timings, kind: LobbyKind) -> Lobby {
-        let (track, tuning) = odyssey();
-        Lobby::new(
-            LobbyId(0),
-            settings,
-            track,
-            tuning,
-            timings,
-            kind,
-        )
+        let (track, tuning) = shipped();
+        Lobby::new(LobbyId(0), settings, track, tuning, timings, kind)
     }
 
     fn player(number: u8) -> Player {
@@ -1577,11 +1595,11 @@ mod tests {
         };
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].car, car);
-        // A sanity check rather than a benchmark: one lap of the skyway from the grid is about
-        // a minute of driving, and what matters here is that the lap was timed at all. What the
+        // A sanity check rather than a benchmark: one lap of the hippodrome from the grid is
+        // under half a minute of driving, and what matters here is that the lap was timed at all. What the
         // autopilot is really worth on a circuit is measured in `content::tests`.
         let time_ms = results[0].time_ms.expect("the race was finished");
-        assert!((30_000..100_000).contains(&time_ms), "{time_ms} ms");
+        assert!((10_000..100_000).contains(&time_ms), "{time_ms} ms");
 
         // Alone, the race ends on the tick its only player crosses the line, so the results are
         // the whole of their finish: the car keeps driving itself through them, hands off.
@@ -1629,7 +1647,9 @@ mod tests {
     fn bots_fill_a_lonely_quick_play_race() {
         let mut lobby = new_lobby_of_kind(settings(1, 2, 8), quick_timings(), LobbyKind::QuickPlay);
         let car = join(&mut lobby, 1);
-        tick_until(&mut lobby, 30.0, |lobby| matches!(lobby.phase, Phase::Racing(_)));
+        tick_until(&mut lobby, 30.0, |lobby| {
+            matches!(lobby.phase, Phase::Racing(_))
+        });
         assert_eq!(lobby.members.len(), QUICK_PLAY_FILL);
         let bots: Vec<CarId> = lobby
             .state()
@@ -1657,7 +1677,10 @@ mod tests {
         );
         assert!(xp.iter().all(|gain| gain.car == car), "{xp:?}");
         lobby.leave(car);
-        assert!(lobby.members.is_empty(), "the bots left with the last player");
+        assert!(
+            lobby.members.is_empty(),
+            "the bots left with the last player"
+        );
     }
 
     /// A player who came to watch spectates every race, never gets a car, and does not count
@@ -1676,9 +1699,14 @@ mod tests {
         for _ in 0..TICK_RATE * 3 {
             lobby.tick();
         }
-        assert!(matches!(lobby.phase, Phase::Waiting), "a watcher alone is not a race");
+        assert!(
+            matches!(lobby.phase, Phase::Waiting),
+            "a watcher alone is not a race"
+        );
         let racer = join(&mut lobby, 1);
-        tick_until(&mut lobby, 10.0, |lobby| matches!(lobby.phase, Phase::Racing(_)));
+        tick_until(&mut lobby, 10.0, |lobby| {
+            matches!(lobby.phase, Phase::Racing(_))
+        });
         assert_eq!(member(&lobby, watcher).status, PlayerStatus::Spectating);
         tick_until(&mut lobby, 150.0, |lobby| {
             autopilot_inputs_for(lobby, racer);
@@ -1704,7 +1732,9 @@ mod tests {
             .collect();
         assert_eq!(names.len(), 2);
         assert!(names.iter().all(|name| name.starts_with("BOT ")));
-        tick_until(&mut lobby, 10.0, |lobby| matches!(lobby.phase, Phase::Racing(_)));
+        tick_until(&mut lobby, 10.0, |lobby| {
+            matches!(lobby.phase, Phase::Racing(_))
+        });
     }
 
     /// A grid full of bots has no name twice (since v1.0.0-rc4: the short film's standings had
@@ -1734,19 +1764,30 @@ mod tests {
         let mut lobby = new_lobby(settings(1, 2, 8), quick_timings());
         let quitter = join(&mut lobby, 1);
         let racer = join(&mut lobby, 2);
-        tick_until(&mut lobby, 10.0, |lobby| matches!(lobby.phase, Phase::Racing(_)));
-        lobby.abandon(quitter);
-        assert_eq!(member(&lobby, quitter).status, PlayerStatus::Racing, "not before the start");
         tick_until(&mut lobby, 10.0, |lobby| {
-            matches!(&lobby.phase, Phase::Racing(race) if lobby.tick > race.start_tick + 30)
+            matches!(lobby.phase, Phase::Racing(_))
         });
+        lobby.abandon(quitter);
+        assert_eq!(
+            member(&lobby, quitter).status,
+            PlayerStatus::Racing,
+            "not before the start"
+        );
+        tick_until(
+            &mut lobby,
+            10.0,
+            |lobby| matches!(&lobby.phase, Phase::Racing(race) if lobby.tick > race.start_tick + 30),
+        );
         lobby.abandon(quitter);
         assert_eq!(member(&lobby, quitter).status, PlayerStatus::Retired);
         let at = member(&lobby, quitter).car.position;
         for _ in 0..TICK_RATE {
             lobby.tick();
         }
-        assert!(member(&lobby, quitter).car.position.distance(at) > 10.0, "it drives itself");
+        assert!(
+            member(&lobby, quitter).car.position.distance(at) > 10.0,
+            "it drives itself"
+        );
         tick_until(&mut lobby, 150.0, |lobby| {
             autopilot_inputs(lobby);
             matches!(lobby.phase, Phase::Results { .. })
@@ -2046,7 +2087,7 @@ mod tests {
     }
 
     fn quick_lobby() -> Lobby {
-        let (track, tuning) = odyssey();
+        let (track, tuning) = shipped();
         Lobby::new(
             LobbyId(0),
             settings(1, 2, 8),
@@ -2087,9 +2128,16 @@ mod tests {
         let bots = |lobby: &Lobby| lobby.members.iter().filter(|m| m.player.bot).count();
         assert_eq!(bots(&lobby), QUICK_PLAY_FILL - 1);
         lobby.tick();
-        assert!(matches!(lobby.phase, Phase::Waiting), "bots are not players to wait for");
+        assert!(
+            matches!(lobby.phase, Phase::Waiting),
+            "bots are not players to wait for"
+        );
         join(&mut lobby, 2);
-        assert_eq!(bots(&lobby), QUICK_PLAY_FILL - 1, "no more bots for a second player");
+        assert_eq!(
+            bots(&lobby),
+            QUICK_PLAY_FILL - 1,
+            "no more bots for a second player"
+        );
         lobby.tick();
         assert!(matches!(lobby.phase, Phase::Racing(_)));
 
@@ -2102,7 +2150,11 @@ mod tests {
         assert_eq!(full.members.len(), max);
         join(&mut full, 200);
         assert_eq!(full.members.len(), max);
-        assert_eq!(bots(&full), QUICK_PLAY_FILL - 2, "a bot went home for the player");
+        assert_eq!(
+            bots(&full),
+            QUICK_PLAY_FILL - 2,
+            "a bot went home for the player"
+        );
     }
 
     #[test]

@@ -471,7 +471,10 @@ fn base_width_at(description: &TrackDescription, length: f32, distance: f32) -> 
     // which holds round past the line.
     let current = widths.partition_point(|change| change.at <= distance);
     let (index, along) = match current {
-        0 => (widths.len() - 1, distance + length - widths[widths.len() - 1].at),
+        0 => (
+            widths.len() - 1,
+            distance + length - widths[widths.len() - 1].at,
+        ),
         current => (current - 1, distance - widths[current - 1].at),
     };
     let change = widths[index];
@@ -734,6 +737,9 @@ pub struct Track {
     breaches: Vec<Breach>,
     /// The lowest the road ever lies, in meters.
     lowest: f32,
+    /// Where every piece of the centerline lies on the plane, to find the road near a position
+    /// without looking at every piece.
+    grid: Grid,
 }
 
 impl Track {
@@ -885,6 +891,7 @@ impl Track {
             narrowest_half_width,
             length: length as f32,
             spacing: spacing as f32,
+            grid: Grid::new(&points),
             points,
             pads: description.pads.clone(),
             gaps: description.gaps.clone(),
@@ -912,7 +919,9 @@ impl Track {
 
     /// Whether the road is missing `distance` meters along the lap.
     pub fn in_gap(&self, distance: f32) -> bool {
-        self.gaps.iter().any(|gap| gap.covers(distance, self.length))
+        self.gaps
+            .iter()
+            .any(|gap| gap.covers(distance, self.length))
     }
 
     /// The stretches where a wall is missing, in the order the file gives them.
@@ -1088,23 +1097,39 @@ impl Track {
     }
 
     pub fn project(&self, position: Vec2) -> TrackProjection {
-        let count = self.points.len();
-        let segment = |index: usize| {
-            (
-                self.points[index].position,
-                self.points[(index + 1) % count].position,
-            )
-        };
-        let (index, t) = (0..count)
-            .map(|index| {
-                let (a, b) = segment(index);
-                let t = segment_parameter(position, a, b);
-                (index, t, position.distance_squared(a.lerp(b, t)))
-            })
-            .min_by(|x, y| x.2.total_cmp(&y.2))
-            .map(|(index, t, _)| (index, t))
+        // The pieces listed where the position lies are the only ones that can be nearest, as
+        // long as one of them is nearer than any piece's reach (see `Grid`).
+        if let Some((index, (squared, t))) = self.nearest_listed(position)
+            && squared <= self.grid.shortest_reach * self.grid.shortest_reach
+        {
+            return self.projection_on(index, t, position);
+        }
+        let (index, t) = (0..self.points.len())
+            .map(|index| (index, self.piece_nearest(index, position)))
+            .min_by(|x, y| x.1.0.total_cmp(&y.1.0))
+            .map(|(index, (_, t))| (index, t))
             .expect("a track always has points");
         self.projection_on(index, t, position)
+    }
+
+    /// How near `position` comes to the piece of centerline from point `index` to the next,
+    /// squared, and how far along the piece the nearest point is, from 0 to 1.
+    fn piece_nearest(&self, index: usize, position: Vec2) -> (f32, f32) {
+        let (a, b) = (
+            self.points[index].position,
+            self.points[(index + 1) % self.points.len()].position,
+        );
+        let t = segment_parameter(position, a, b);
+        (position.distance_squared(a.lerp(b, t)), t)
+    }
+
+    /// The nearest of the pieces the grid lists where `position` lies, if any.
+    fn nearest_listed(&self, position: Vec2) -> Option<(usize, (f32, f32))> {
+        self.grid
+            .cell(position)?
+            .iter()
+            .map(|&index| (index as usize, self.piece_nearest(index as usize, position)))
+            .min_by(|x, y| x.1.0.total_cmp(&y.1.0))
     }
 
     /// Where `position` lies relative to the part of the road a car there follows: the one near
@@ -1157,28 +1182,46 @@ impl Track {
     /// doubles back close by.
     pub fn candidates(&self, position: Vec2) -> Vec<TrackProjection> {
         let count = self.points.len();
-        let squared: Vec<(f32, f32)> = (0..count)
-            .map(|index| {
-                let (a, b) = (
-                    self.points[index].position,
-                    self.points[(index + 1) % count].position,
-                );
-                let t = segment_parameter(position, a, b);
-                (position.distance_squared(a.lerp(b, t)), t)
-            })
-            .collect();
-        let nearest = (0..count)
-            .min_by(|&a, &b| squared[a].0.total_cmp(&squared[b].0))
-            .expect("a track always has points");
+        let shortest = self.grid.shortest_reach;
+        // A piece within its reach of the position is listed in its cell, and so is the nearest
+        // of all when one listed is nearer than any piece's reach (see `Grid`): the pieces listed
+        // are then the only ones to look at, with their neighbours along the lap.
+        let listed = match self.nearest_listed(position) {
+            Some((nearest, (squared, _))) if squared <= shortest * shortest => {
+                self.grid.cell(position).map(|listed| (nearest, listed))
+            }
+            _ => None,
+        };
         let mut out = Vec::with_capacity(2);
-        for index in 0..count {
-            let here = squared[index].0;
-            let before = squared[(index + count - 1) % count].0;
-            let after = squared[(index + 1) % count].0;
-            let local = here <= before && here < after;
+        let mut consider = |index: usize, nearest: usize, here: (f32, f32)| {
             let reach = self.points[index].half_width + CANDIDATE_REACH;
-            if index == nearest || (local && here <= reach * reach) {
-                out.push(self.projection_on(index, squared[index].1, position));
+            if index != nearest && here.0 > reach * reach {
+                return;
+            }
+            let before = self.piece_nearest((index + count - 1) % count, position).0;
+            let after = self.piece_nearest((index + 1) % count, position).0;
+            let local = here.0 <= before && here.0 < after;
+            if index == nearest || local {
+                out.push(self.projection_on(index, here.1, position));
+            }
+        };
+        match listed {
+            Some((nearest, listed)) => {
+                for &index in listed {
+                    let index = index as usize;
+                    consider(index, nearest, self.piece_nearest(index, position));
+                }
+            }
+            None => {
+                let all: Vec<(f32, f32)> = (0..count)
+                    .map(|index| self.piece_nearest(index, position))
+                    .collect();
+                let nearest = (0..count)
+                    .min_by(|&a, &b| all[a].0.total_cmp(&all[b].0))
+                    .expect("a track always has points");
+                for (index, here) in all.into_iter().enumerate() {
+                    consider(index, nearest, here);
+                }
             }
         }
         out
@@ -1224,16 +1267,90 @@ impl Track {
     }
 }
 
+/// The side of a cell of [`Grid`], in meters.
+const GRID_CELL: f32 = 32.0;
+
+/// The pieces of a track's centerline sorted by where they lie on the plane (since v1.0.0-rc13), so
+/// finding the road near a car looks at the pieces around it rather than at the whole lap: a race
+/// of sixteen cars on a lap of 5 km spent 11 ms a tick projecting them before it.
+///
+/// The plane is cut into square cells, and every cell lists, in order along the lap, the pieces
+/// that come within their reach (half the road's width there and [`CANDIDATE_REACH`]) of some
+/// point of it. So a piece within its reach of a position is listed in the position's cell; and a
+/// piece listed nearer than the shortest reach of all is nearer than any piece not listed, which is
+/// further than its own reach.
+#[derive(Debug, Clone)]
+struct Grid {
+    origin: Vec2,
+    columns: usize,
+    rows: usize,
+    cells: Vec<Vec<u32>>,
+    shortest_reach: f32,
+}
+
+impl Grid {
+    fn new(points: &[TrackPoint]) -> Self {
+        let count = points.len();
+        let reach = |index: usize| points[index].half_width + CANDIDATE_REACH;
+        let bounds = |index: usize| {
+            let (a, b) = (points[index].position, points[(index + 1) % count].position);
+            let reach = Vec2::splat(reach(index));
+            (a.min(b) - reach, a.max(b) + reach)
+        };
+        let (low, high) = (0..count).map(bounds).fold(
+            (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY)),
+            |(low, high), (from, to)| (low.min(from), high.max(to)),
+        );
+        let size = ((high - low) / GRID_CELL).ceil().max(Vec2::ONE);
+        let (columns, rows) = (size.x as usize, size.y as usize);
+        let mut grid = Self {
+            origin: low,
+            columns,
+            rows,
+            cells: vec![Vec::new(); columns * rows],
+            shortest_reach: (0..count).map(reach).fold(f32::INFINITY, f32::min),
+        };
+        for index in 0..count {
+            let (from, to) = bounds(index);
+            let (first, last) = (grid.coordinates(from), grid.coordinates(to));
+            for row in first.1..=last.1 {
+                for column in first.0..=last.0 {
+                    grid.cells[row * columns + column].push(index as u32);
+                }
+            }
+        }
+        grid
+    }
+
+    /// The column and row of the cell holding `position`, kept within the grid.
+    fn coordinates(&self, position: Vec2) -> (usize, usize) {
+        let cell = ((position - self.origin) / GRID_CELL).max(Vec2::ZERO);
+        (
+            (cell.x as usize).min(self.columns - 1),
+            (cell.y as usize).min(self.rows - 1),
+        )
+    }
+
+    /// The pieces listed where `position` lies; none outside the grid, so far from the road that
+    /// every piece must be looked at.
+    fn cell(&self, position: Vec2) -> Option<&[u32]> {
+        let cell = (position - self.origin) / GRID_CELL;
+        if !(cell.x >= 0.0 && cell.y >= 0.0) {
+            return None;
+        }
+        let (column, row) = (cell.x as usize, cell.y as usize);
+        (column < self.columns && row < self.rows)
+            .then(|| self.cells[row * self.columns + column].as_slice())
+    }
+}
+
 /// The width of the road `distance` meters along a track `length` meters round: its width there
 /// ([`base_width_at`]), pinched in by whichever narrows reaches furthest in here.
 fn width_at(description: &TrackDescription, length: f32, distance: f32) -> f32 {
     let base = base_width_at(description, length, distance);
-    description
-        .narrows
-        .iter()
-        .fold(base, |width, narrows| {
-            width.min(narrows.width_at(distance, length, base))
-        })
+    description.narrows.iter().fold(base, |width, narrows| {
+        width.min(narrows.width_at(distance, length, base))
+    })
 }
 
 /// Where a closed centerline of evenly spaced `points` climbs or dives most steeply: the distance
@@ -1260,7 +1377,10 @@ fn steepest_grade(points: &[TrackPoint], spacing: f32) -> (f32, f32) {
 /// long, brings the centerline back exactly a width apart. Tighter spots cannot be turns.
 fn find_overlap(points: &[TrackPoint], spacing: f32) -> Option<(f32, f32, f32)> {
     let length = points.len() as f32 * spacing;
-    let widest = points.iter().map(|point| point.half_width).fold(0.0, f32::max);
+    let widest = points
+        .iter()
+        .map(|point| point.half_width)
+        .fold(0.0, f32::max);
     let far_along = std::f32::consts::PI * widest;
     for (i, a) in points.iter().enumerate() {
         for (j, b) in points.iter().enumerate().skip(i + 1) {
@@ -1944,6 +2064,71 @@ mod tests {
     /// A road may cross itself on a bridge, high enough over the road under it, and not at the same
     /// level (since v1.0.0-rc10).
     #[test]
+    fn the_grid_finds_what_looking_at_every_piece_finds() {
+        for description in [oval(120.0, 45.0, 25.0), crossing(20.0)] {
+            let track = Track::build(&description).unwrap();
+            let every = |position: Vec2| {
+                (0..track.points.len())
+                    .map(|index| (index, track.piece_nearest(index, position)))
+                    .min_by(|x, y| x.1.0.total_cmp(&y.1.0))
+                    .map(|(index, (_, t))| track.projection_on(index, t, position))
+                    .unwrap()
+            };
+            // The candidates as they were found before the grid, looking at every piece.
+            let every_candidate = |position: Vec2| {
+                let count = track.points.len();
+                let all: Vec<(f32, f32)> = (0..count)
+                    .map(|index| track.piece_nearest(index, position))
+                    .collect();
+                let nearest = (0..count)
+                    .min_by(|&a, &b| all[a].0.total_cmp(&all[b].0))
+                    .unwrap();
+                (0..count)
+                    .filter(|&index| {
+                        let here = all[index].0;
+                        let local = here <= all[(index + count - 1) % count].0
+                            && here < all[(index + 1) % count].0;
+                        let reach = track.points[index].half_width + CANDIDATE_REACH;
+                        index == nearest || (local && here <= reach * reach)
+                    })
+                    .map(|index| track.projection_on(index, all[index].1, position).distance)
+                    .collect::<Vec<f32>>()
+            };
+            // Every two meters and a half over the road and well beyond it, at an odd offset so no
+            // position falls on a cell's edge.
+            let (low, high) = track.points.iter().fold(
+                (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY)),
+                |(low, high), point| (low.min(point.position), high.max(point.position)),
+            );
+            let mut crossings = 0;
+            let mut y = low.y - 90.3;
+            while y < high.y + 90.0 {
+                let mut x = low.x - 90.7;
+                while x < high.x + 90.0 {
+                    let position = Vec2::new(x, y);
+                    let (fast, slow) = (track.project(position), every(position));
+                    assert!((fast.distance - slow.distance).abs() < 1e-3, "{position}");
+                    assert!(
+                        (fast.lateral.abs() - slow.lateral.abs()).abs() < 1e-3,
+                        "{position}"
+                    );
+                    let found: Vec<f32> = track
+                        .candidates(position)
+                        .iter()
+                        .map(|c| c.distance)
+                        .collect();
+                    assert_eq!(found, every_candidate(position), "{position}");
+                    crossings += usize::from(found.len() > 1);
+                    x += 2.5;
+                }
+                y += 2.5;
+            }
+            // Where the road crosses itself or doubles back, more than one road is found.
+            assert!(crossings > 0, "{}", description.name);
+        }
+    }
+
+    #[test]
     fn a_road_crosses_itself_on_a_bridge() {
         assert!(matches!(
             Track::build(&crossing(0.0)),
@@ -1962,7 +2147,8 @@ mod tests {
         assert!((low.distance - 155.0).abs() < 5.0, "{low:?}");
         assert!((high.distance - 680.0).abs() < 15.0, "{high:?}");
         assert!(track.height_at(&high) - track.height_at(&low) > MIN_CLEARANCE);
-        let landing = |height: f32, road: f32| track.project_landing(under, height, height, Some(road));
+        let landing =
+            |height: f32, road: f32| track.project_landing(under, height, height, Some(road));
         assert!((landing(30.0, 150.0).distance - high.distance).abs() < 1.0);
         assert!((landing(10.0, 670.0).distance - low.distance).abs() < 1.0);
     }

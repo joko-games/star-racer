@@ -556,6 +556,15 @@ fn spawn_login(
                     TextColor(theme::TEXT_DIM),
                     theme::TEXT_SHADOW,
                 ));
+                // The studio (since v1.0.0-rc13, the user's word on 2026-11-25: "Je suis maintenant la
+                // (presque) entreprise Joko Games, indique le ou c'est pertinent").
+                badge.spawn((
+                    Text::new("BY JOKO GAMES"),
+                    fonts.caption(pick(16.0, 12.0)),
+                    theme::CAPTION_SPACING,
+                    TextColor(theme::TEXT_FAINT),
+                    theme::TEXT_SHADOW,
+                ));
             });
             root.spawn(Node {
                 height: px(pick(10.0, 4.0)),

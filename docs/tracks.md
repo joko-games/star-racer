@@ -6,164 +6,32 @@ turtle drawing the road. The format is defined by `TrackDescription` in
 
 Track files live in `server/data/tracks/`, one per track, named by its key: the server loads them
 all, and the player who creates a lobby picks one; quick play and ranked take them in turn. Since
-v0.1.50 the game ships [the Odyssey](#the-odyssey), which replaced the skyway and the
-rift at the user's word ("tu vas supprimer les niveaux déjà fait et en faire un long et riche, en
-pensant checkpoints ET shortcuts à découvrir"), since v0.1.4 [Cascade](#cascade) beside it, and since
-v1.0.0-rc12 [the Knot](#the-knot), a short one. Clients receive every track when they connect (see
+v1.0.0-rc13 the game ships one circuit, [the Hippodrome](#the-hippodrome), at the user's word
+("Supprime tous les niveaux, ne conserve qu'un circuit hyppodrome très simple, on fera du niveau de
+qualité a la pelle plus tard"). Clients receive every track when they connect (see
 [Protocol](protocol.md#tracks)). Every shipped track is tested: it must load, and the autopilot
 must lap it drifting without touching a wall, faster than gripping (see
 [Simulation](simulation.md#autopilot)).
 
-## The Odyssey
+## The Hippodrome
 
-`odyssey.ron`: 40 m from wall to wall (30 until v0.1.53), **5.28 km a lap** (5.06 until v0.1.51), its relief from 6 to 60 m, its road
-missing in four places, eleven checkpoints, eight speed pads, and three shortcuts. The lap is one
-big turn to the left, a rounded rectangle about 1.2 km by 0.9, with three loops hanging off its
-outside: the road leaves its line to the right, winds round a tight banked loop and comes back to
-the line it left, a little further on. Between them it runs fast: slaloms of 70 to 120 m radii,
-a quarter turn of 140 m, straights with a gap to jump.
-
-- **The launch**: out of the line and down the straight; until v1.0.0-rc1 over a hop, 14 m
-  missing 150 m after the line, taken out at the user's word ("enlève le trou au début de
-  Odyssey").
-- **The weave**: a long, fast slalom, dropping 12 m.
-- **The keyhole**: the first loop, 440 m of it, the lowest part of the lap.
-- **The long left**: a wide banked quarter turn, climbing.
-- **The leap**: 110 m missing on the way up: the thruster's.
-- **The climb**: a slalom up to the top of the lap, 60 m up.
-- **The balcony**: the second loop, out over the void, winding down 26 m.
-- **The sky bowl**, a banked left, and **the gate**, the top straight pinched to 18 m.
-- **The dive**: down 30 m through a fast kink.
-- **The rift**: 170 m missing at the bottom of the dive, a monolith standing over the void on
-  either side.
-- **The scree**, a slalom, and **the step**, 16 m missing on the way out of it.
-- **The west corner**, climbing, and **the esses**.
-
-Since v0.1.69 nothing stands over the Odyssey's road: its six gantries and three tunnels were taken out at the user's word "Enlève tout ce qu'il peut y avoir comme \"toit\" au dessus de la route", the car flying twice as high on its thruster. The two kinds of prop remain in the format.
-- **The long way round**: the third loop, the widest.
-- **The last corner**, onto the run home.
-
-Since v0.1.54 the road is 40 m wide instead of 30, at the user's word ("Elargis les routes du
-circuit"): the balcony's loop was redrawn so its two ends no longer meet on a wider road (turns of
-110 degrees instead of 120 on necks of 30 m, round a turn of 52 m), and the keyhole's first turn
-is banked 14 degrees instead of 22, a wider road raising its outer edge too high to fly over.
-Since v0.1.52 its leap and its rift are 110 and 170 m long (45 and 55 before), the straights
-under them stretched by 80 and 100 m, for a thruster that flies twice as far (the user's word:
-"Agrandis les précipices, car on doit pouvoir thrust bien davantage"). With the shipped car the
-autopilot laps it gripping in 83.0 s and drifting in 79.4 s with five charges of turbo fired,
-both without touching a wall or falling; six ticks late, 83.4 s clean and 88.2 s with 99 ticks
-against a wall; eight personalities from 75.3 to 84.0 s. It takes no
-shortcut. A race is two laps by default, since a lap is two and a half times what the skyway's
-was.
-
-It was designed with a scratch tool outside the repository that integrates the clothoids, solves
-two lengths so the loop closes, moves everything placed along the lap when the road before it
-changes length, draws the plan colored by height, drives the autopilot round, and flies a car
-straight on from any point of the road to see where it comes down.
-
-### Shortcuts
-
-**The walls are as high as they look** (1.4 m), and nothing stands on top of them (the user's
-word: "Il ne faut pas de mur invisible mais on doit détecter quand le joueur part trop en sucette
-pour le faire respawn après un petit compte à rebours"). A hop does not clear them; the thruster
-does, and a car that flies over one has left the road. It keeps its own height out there, the
-thruster still pushing while its tank lasts, and it is on the road again the moment it is over
-road no higher than it is, whichever part of the lap that road belongs to. Meanwhile it is
-counted out: 2.4 s off its course and it is brought back to its last checkpoint (see
-[Simulation](simulation.md#off-the-road)).
-
-That is all a shortcut needs, and the three loops are where they are. Each leaves the line the
-road was on and comes back to it, so a car that goes **straight on where the road turns away**
-crosses the void between the loop's two ends and lands on the road coming back, 300 to 340 m of
-loop skipped, about five seconds:
-
-| Loop | How | Measured |
-| --- | --- | --- |
-| The keyhole | Over the wall on the thruster, at top speed, from the straight before the loop (615 to 630 m, since the road is 40 m wide): later, the car flies into the banked road of the loop's first turn. The pad before the loop, on the left, is the hint. | 2.3 s in the air, 0.7 s off the road |
-| The balcony | The wall is missing where the road turns away (a [breach](#breaches)), and the road coming back lies 26 m below: straight on, nothing pressed. | 1.5 s of falling |
-| The long way round | The longest flight, on the thruster from top speed (until v0.1.51, when the thruster was weaker, it took the turbo). | 2.1 s in the air, 1.25 s off the road |
-
-Nothing announces them but a pad pointing the wrong way and a wall that is not there. A failed
-one costs the fall, the count and the way back from the checkpoint before the loop.
-
-**What keeps them honest is the checkpoints.** No gate stands inside a loop, so a car that cuts
-one lands between the same two gates it left, and its progress takes the cut in full. Anywhere
-else, a flight from one part of the road to another ends beyond a gate the car has not passed:
-there it is off its course, on the road or not, counted out and brought back (see
-[Checkpoints](#checkpoints)). `the_shortcuts_of_the_odyssey_are_there` (`server/src/content.rs`)
-flies all three with the shipped car, and fails if a change to the track or to the tuning closes
-one or opens the last to a car at top speed.
-
-## Cascade
-
-`cascade.ron`, since v0.1.4, at the user's word: "Fais un nouveau niveau, ambitieux, qui fait bcp
-moins \"circuit\", avec plein de hauteurs, de virages, de décors, de jumps, etc... etc...". It is
-drawn as a mountain road through the city rather than a circuit: no rounded rectangle and no long
-straights, but a climb, a summit, a descent in steps and a valley, the city standing on every side
-and stacked up the slope. 34 m from wall to wall, **5.17 km a lap**, its relief from 8 to 119 m,
-its road missing in four places, eleven checkpoints, five pads, and a canyon pinched to 22 m.
-
-- **The launch** east out of the line, and **the ridge**, a fast S toward the foot of the
-  mountain, climbing a little.
-- **The switchbacks**: five hairpins of 44 to 50 m radii, banked 30 degrees, on legs of 150 to
-  230 m, climbing from 32 to 110 m. Between every two legs a district stands on the slope, each
-  higher than the one below, so the city reads as a mountain; a tower stands inside every hairpin
-  and a taller one outside it, the tallest at the top.
-- **The summit**: along the crest at 119 m, then **the leap**, 95 m missing, the road taking up
-  again 22 m lower between two monoliths: the thruster's, the city far below.
-- **The cascade**: down in steps, meandering west, two short gaps (24 and 28 m) on the way down,
-  each a hop, and a wide right between them, taken without drifting (it was 85 m, then 100: the
-  autopilot straightening for the step after it ran wide).
-- **The falls**: 140 m missing on the long straight down, from 44 to 22 m: the thruster's.
-- **The bend**, **the canyon** south between walls of the city 38 to 46 m high, pinched to 22 m,
-  through a chicane, and **the corner** into **the valley**, the bottom of the lap at 8 m, a long
-  sweep east through the middle of the city that fills the inside of the lap below the cascade.
-- **The lasso**: a tight loop out to the right and back, the Odyssey's long way round in
-  proportions, its inside left to the dark.
-- **The run home**, where the grid stands.
-
-**The shortcut** is the lasso: it leaves its line and comes back to it, so a car flying straight
-on over the wall on the thruster from the end of the straight before it (4355 to 4370 m) lands on
-the road coming back, about 430 m skipped; no checkpoint stands inside it.
-`the_lasso_of_cascade_can_be_cut` (`server/src/content.rs`) flies it with the shipped car.
-
-With the shipped car the autopilot laps it gripping in 82.7 s and drifting in 77.7 s with six
-charges of turbo fired, both without a fall, drifting with 2 ticks against a wall; six ticks late,
-82.9 s clean gripping and 78.8 s drifting with 25 wall ticks; eight personalities from 77.1 to
-83.6 s, none falling.
-
-It was designed with a scratch tool outside the repository, built on `sim` itself: the design is
-a list of segments with named places, everything else (heights, gaps, checkpoints, pads, props)
-placed from those names, so it follows when the road before it changes; the two free straights
-(A, the canyon's, and B, the run before the line) are solved exactly, a straight moving the end of
-the lap along its own heading; it writes the track file, draws the plan colored by height and the
-profile, drives the autopilot round in every style and with every personality, and lists where a
-lap touches a wall.
-
-## The Knot
-
-Since v1.0.0-rc12 (2026-11-25), at the user's word "Fais un nouveau niveau court qui illustre tout
-ca": a short circuit, 2.26 km round, made to show what a circuit may do since v1.0.0-rc10. It was
-laid piece by piece with the level editor's own model (`client/src/editor/model.rs`), which closed
-it, then written out by hand with its scenery (`server/data/tracks/knot.ron`).
-
-| Stretch | What it shows |
-| --- | --- |
-| the line | 320 m east, 32 m wide, between two stands under the gantry |
-| the climb | a left of 225 degrees, radius 50, banked 14 degrees, climbing 20 m |
-| the ramp | up another 10 m as the road narrows to 22 m ([Widths](#widths)) |
-| the bridge | 480 m at 30 m up, crossing over the straight out of the line and over the run home ([Crossings](#crossings)) |
-| the drop | 80 m falling 28 m, close to the steepest a road may |
-| the plaza | the road opening out to 46 m at the foot of the drop |
-| the hairpin | a left of 207 degrees, radius 55, where the drift pays |
-| the run home | 580 m back under the bridge, then a right of 72 degrees onto the line |
-
-Two checkpoints, on the climb (600 m) and on the plaza (1340 m). The bridge's far end comes down
-over the run home, so no pylon stands there; its piers stand clear of both roads under it. The
-autopilot laps it gripping in 39.7 s and drifting in 38.4 s, without a wall or a fall, late
-included.
+`hippodrome.ron`: an oval, 32 m from wall to wall, **about 860 m a lap**, flat. Two straights of
+260 m (the line in the middle of the first) and two half turns of radius 45 m, banked 14 degrees,
+each easing in and out over 30 m. One checkpoint, halfway, on the far straight. A gantry over the
+line, two grandstands and two districts of towers outside the turns. No gap, no pad, no shortcut:
+it is a place to drive while circuits of quality are made. The turns are tight enough that the
+drifting autopilot drifts through them and laps faster than gripping, which the shipped-track test
+asks; at radius 65 it did not drift at all.
 
 ## The circuits before it
+
+From v0.1.50 to v1.0.0-rc12 the game shipped richer circuits, all taken out in v1.0.0-rc13 and
+kept in the history: **the Odyssey** (5.28 km, 40 m wide, three loops hanging off a big lap, each
+a shortcut for whoever flew straight across, gaps to jump and eleven checkpoints), **Cascade**
+(5.17 km, a mountain road through the city, five hairpins up to a summit 119 m high, a leap, a
+canyon, four gaps and a shortcut across its lasso) and **the Knot** (2.26 km, short, showing what a
+circuit may do since v1.0.0-rc10: a bridge over the road twice, widths from 22 to 46 m, a drop
+near 40 degrees). Before them:
 
 `skyway.ron` was the one circuit the game shipped until v0.1.48, and one of two until v0.1.49,
 with `rift.ron` (see [The rift](#the-rift)): 34 m from wall to wall, 1.86 km a lap, and nothing
@@ -349,6 +217,18 @@ and one over it each keeping to its road for three seconds; and captures of the 
 a scratch circuit of that shape, passing under the bridge, the deck's shadow on the road, its piers
 beside it.
 
+**Finding the road quickly** (since v1.0.0-rc13, after the user's report on 2026-11-25: "J'ai eu du
+lag avec 15 bots"). Every car finds the road it is on several times a tick, the autopilot many more,
+and each search looked at every piece of the centerline: on the Odyssey's 5,276 pieces, sixteen
+cars on the autopilot cost 11.2 ms a tick in release on this machine, two thirds of the 16.7 ms a
+tick has, and more than all of it on the server's smaller machine. The track now keeps a grid of
+cells 32 m wide over the plane (`Grid` in `sim/src/track.rs`), each listing the pieces that come
+within their reach of it, and looks at those only: 0.51 ms a tick there, 0.41 on the Hippodrome
+(1.74 before). The answers are the same as looking at every piece, which a test checks every 2.5 m
+over an oval and a crossing; a position off the grid, far from any road, still looks at them all.
+Measured by `a_full_field_costs` (`sim/src/autopilot.rs`, run by hand with
+`STAR_RACER_BENCH_TRACK`).
+
 ## Widths
 
 Since v1.0.0-rc10, at the user's word ("Largeur par segment"), the road may change width along the
@@ -487,7 +367,7 @@ by one going by beside it. And a car has a **course**: the road from the last ga
 the next one, and 120 m behind (`Track::on_course`). Anywhere else on the road it has missed a
 gate, or gone back past one: it is counted out exactly as a car off the road is, the HUD saying
 MISSED CHECKPOINT, and brought back to its last gate after 2.4 s. That is what stops a flight
-from one side of the lap to another (see [Shortcuts](#shortcuts)).
+from one side of the lap to another (see [the Odyssey](#the-circuits-before-it), gone since v1.0.0-rc13).
 
 They must be in order along the lap, 40 m from each other and from the line, and none may lie in a
 gap or less than 40 m before one, so a car brought back to it has room to get going again
