@@ -54,6 +54,20 @@ A release without the installer or the feed is not published: the release job ch
 it does for the Windows and Linux zips. Updates are full packages, about the size of the zip; no
 delta packages are made, which would need the previous release's files at packing time.
 
+## Numbering the versions
+
+The updater takes a release as newer by comparing versions as semver does, and semver compares the
+words of a prerelease as text: `1.0.0-rc17` came before `1.0.0-rc8`, `1` sorting before `8`. So
+the game installed at rc8 on 2026-11-24 never took rc10 to rc17, finding each older than itself
+(the user's report on 2026-11-25: "Je suis en rc8 installée ici et ca n'update pas"; its updater's
+log showed rc7 to rc8 done, and nothing after). Asked, the user chose to keep release candidates,
+so since **v1.0.0-rc.18** they are numbered `1.0.0-rc.N`, the number behind a dot, which semver
+compares as a number: rc.18, rc.19, ..., rc.100 come in order. A test holds the crates to it
+(`the_version_orders_as_the_updater_reads_it`). The same text rule makes `rc.18` older than `rc8`
+and `rc17`, so a game installed at rc7, rc8 or rc17 must be installed again by hand once, from the
+installer of rc.18 or later; after that it updates itself. The final `1.0.0` comes after every
+release candidate, whatever its number.
+
 ## Verified
 
 v1.0.0-rc7 was the first release with the installer (2026-11-24, Windows, Linux and macOS all

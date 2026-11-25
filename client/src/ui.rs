@@ -91,3 +91,19 @@ fn scale_to_window(
         scale.0 = wanted;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    /// A release candidate is numbered `1.0.0-rc.N`, its number apart behind a dot (since
+    /// v1.0.0-rc.18): the installed game's updater orders versions as semver does, which compares
+    /// `rc17` and `rc8` as text, so `rc17` came before `rc8` and a game installed at rc8 never took
+    /// rc10 to rc17. Behind a dot the number is compared as a number.
+    #[test]
+    fn the_version_orders_as_the_updater_reads_it() {
+        let version = env!("CARGO_PKG_VERSION");
+        if let Some((_, pre)) = version.split_once('-') {
+            let number = pre.strip_prefix("rc.").expect("a prerelease is rc.N");
+            assert!(number.parse::<u32>().is_ok(), "{version}: rc.N, N a number");
+        }
+    }
+}
