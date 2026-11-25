@@ -146,7 +146,10 @@ and the race time in the top right, the checkpoint line under them; the circuit,
 the player's card on the right too between races, and the latency figures (F3) under them; every
 race time to the hundredth (`race_time`, cut, not rounded). The centre keeps RACE IN, WATCHING,
 FINISHED and the results. On a touchscreen the race's beta panel goes on the left under the
-standings, the right holding LEAVE above the lap.
+standings, the right holding LEAVE above the lap. Since v1.0.0-rc17 the race's beta panel is
+shown only while the menu is open (Escape, Start, or LEAVE on a touchscreen), or to someone
+watching, whose keys (other car, camera) it holds: the user's word "N'affiche pas le menu de beta
+pendant qu'on joue, que quand on fait menu".
 
 **Cleared for the race** (v0.1.5, the user's word "Enlève des élements superflus à l'écran, on
   doit épurer, fournir le max de vision de la race au joueur. Je pense au nom du circuit à gauche
@@ -436,6 +439,19 @@ directionnel/joystick/clavier, ca doit etre vraiment cohérent"). Found and fixe
   did nothing; it now focuses the first widget in reading order.
 - **The editor's arrows** pan its map, as WASD do: they no longer also move the focus through its
   panel, which the D-pad, the stick and Tab still reach.
+
+**Where a move lands, since v1.0.0-rc17** (the user's word: "Il y a encore des deplacements dans
+l'UI a la croix qui sont bizarres, n'arrivent sur rien"). Bevy's automatic navigation looked at
+every widget on the screen, those under an open dialog too: from the settings, the create dialog,
+the leaderboard, GRAPHICS & SOUND, the feedback editor or a race's menu, a move could take the
+focus to a button of the screen behind, covered by the dialog, where nothing showed it. Now the
+move is picked by `navigation.rs` itself (`best_toward`): among the widgets shown, usable and inside
+the dialog on top if one is open (its root marked `Modal`), the nearest ahead in the direction,
+one lined up with the start (overlapping its column, or its row) winning over a nearer one off to
+the side (`SIDEWAYS_WEIGHT`); with nothing that way the focus stays. Tab keeps to the dialog too,
+and a focus left under a dialog or on a widget gone is brought to its first widget by the next
+move. And a move onto a row a list has scrolled out of sight scrolls the list to show it
+(`scroll_focus_into_view`: the lobby list, the editor's pieces, the settings).
 
 ## On a touchscreen
 

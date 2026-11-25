@@ -84,6 +84,7 @@ fn show(
         .spawn((
             LeaderboardRoot,
             DespawnOnExit(Screen::Login),
+            super::navigation::Modal,
             GlobalZIndex(10),
             Node {
                 position_type: PositionType::Absolute,

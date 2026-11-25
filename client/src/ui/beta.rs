@@ -289,6 +289,7 @@ fn show_feedback_dialog(
             commands
                 .spawn((
                     FeedbackRoot,
+                    super::navigation::Modal,
                     GlobalZIndex(200),
                     Node {
                         position_type: PositionType::Absolute,

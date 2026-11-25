@@ -246,6 +246,10 @@ enum Block {
     StandingRow(usize),
     Results,
     ResultRow(usize),
+    /// The beta panel (since v1.0.0-rc17, the user's word: "N'affiche pas le menu de beta pendant
+    /// qu'on joue, que quand on fait menu"): only while the menu is open, or to someone watching,
+    /// whose keys (other car, camera) it holds.
+    BetaPanel,
     DrivingHints,
     /// Between the finish line and the next grid, when the car drives itself.
     WatchingHints,
@@ -718,7 +722,7 @@ fn spawn_hud(
                 (corner.right, corner.bottom) = (px(18), px(14));
             }
             root.spawn((corner, Pickable::IGNORE)).with_children(|corner| {
-                corner.spawn(super::beta::frame()).with_children(|panel| {
+                corner.spawn((super::beta::frame(), Block::BetaPanel)).with_children(|panel| {
                     panel.spawn(super::beta::tag(&fonts));
                     panel.spawn((
                         Block::DrivingHints,
@@ -995,12 +999,16 @@ fn update_hud(
         Res<crate::spectator::SpectatorCamera>,
         ResMut<Gauges>,
     ),
+    leave_dialog: Res<LeaveDialog>,
 ) {
     let Some(membership) = &current.0 else {
         return;
     };
     let track_length = track.as_ref().map_or(1.0, |track| track.0.length());
     let mut model = build_model(membership, &view, &tracks, track_length, *touchscreen);
+    if leave_dialog.open {
+        model.shown.insert(Block::BetaPanel);
+    }
     *gauges = std::mem::take(&mut model.gauges);
     reward_line(&mut model, membership, &progress);
     // Watching: which camera, under whom.
@@ -1241,8 +1249,11 @@ fn build_model(
                 gauges.thrust = (car.thrust / tuning.thrust_seconds, active, car.thrusting);
             }
         }
-    } else if !touchscreen.0 {
-        model.shown.insert(Block::SpectatingHints);
+    } else {
+        model.shown.insert(Block::BetaPanel);
+        if !touchscreen.0 {
+            model.shown.insert(Block::SpectatingHints);
+        }
     }
 
     let Some(state) = &membership.state else {
@@ -1751,6 +1762,7 @@ fn show_leave_dialog(
                 .spawn((
                     LeaveDialogRoot,
                     DespawnOnExit(Screen::Lobby),
+                    super::navigation::Modal,
                     GlobalZIndex(10),
                     Node {
                         position_type: PositionType::Absolute,

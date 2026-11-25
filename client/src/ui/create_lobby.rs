@@ -468,6 +468,7 @@ fn spawn_dialog(
         .spawn((
             DialogRoot,
             DespawnOnExit(Screen::Lobbies),
+            super::navigation::Modal,
             GlobalZIndex(10),
             Node {
                 position_type: PositionType::Absolute,

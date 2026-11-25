@@ -350,6 +350,7 @@ fn spawn(commands: &mut Commands, fonts: &Fonts, touchscreen: Touchscreen, scree
             Root,
             DespawnOnExit(screen),
             // Over the settings, which opened it.
+            super::navigation::Modal,
             GlobalZIndex(20),
             Node {
                 position_type: PositionType::Absolute,

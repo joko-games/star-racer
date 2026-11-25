@@ -37,8 +37,14 @@ use crate::screen::Screen;
 const STICK_THRESHOLD: f32 = 0.55;
 const REPEAT_DELAY: f64 = 0.4;
 const REPEAT_INTERVAL: f64 = 0.12;
-/// How many disabled widgets a move goes past in one direction before giving up.
-const MAX_SKIPPED: usize = 8;
+/// How much more a widget's sideways gap counts than its distance ahead, picking where a move
+/// goes: a widget straight below wins over a nearer one off to the side.
+const SIDEWAYS_WEIGHT: f32 = 3.0;
+
+/// A dialog over the screen: while one is shown, the focus moves only among its widgets (since
+/// v1.0.0-rc17). The one drawn on top wins when dialogs are stacked.
+#[derive(Component, Default)]
+pub struct Modal;
 
 pub struct NavigationPlugin;
 
@@ -51,7 +57,8 @@ impl Plugin for NavigationPlugin {
                 PreUpdate,
                 (track_last_input, navigate).chain().after(InputSystems),
             )
-            .add_systems(Update, focus_follows_pointer);
+            .add_systems(Update, focus_follows_pointer)
+            .add_systems(PostUpdate, scroll_focus_into_view);
     }
 }
 
@@ -136,6 +143,10 @@ fn navigate(
     mut repeat: Local<Repeat>,
     mut pointer: ResMut<PointerLeads>,
     screen: Option<Res<State<Screen>>>,
+    (modals, parents): (
+        Query<(Entity, &GlobalZIndex, &ComputedNode, &InheritedVisibility), With<Modal>>,
+        Query<&ChildOf>,
+    ),
     mut commands: Commands,
 ) {
     // The settings are waiting for a key or a button to bind: it is theirs, not the menus'.
@@ -160,20 +171,42 @@ fn navigate(
     if direction.is_some() || tab {
         pointer.set_if_neq(PointerLeads(false));
     }
-    // Nothing focused, or the focus on a widget gone or hidden: the first widget takes it, whatever
-    // moved it, instead of the press doing nothing.
+    // An open dialog keeps the focus inside it: the widgets behind it are covered.
+    let scope = modals
+        .iter()
+        .filter(|(_, _, node, visibility)| !node.is_empty() && visibility.get())
+        .max_by_key(|(_, z, _, _)| z.0)
+        .map(|(entity, ..)| entity);
+    let inside = |entity: Entity| {
+        scope.is_none_or(|scope| {
+            std::iter::successors(Some(entity), |&entity| {
+                parents.get(entity).ok().map(ChildOf::parent)
+            })
+            .any(|ancestor| ancestor == scope)
+        })
+    };
+    // What a move may land on: shown, usable, and inside the open dialog if there is one.
+    let candidates = || -> Vec<Entity> {
+        reading_order(&widgets)
+            .into_iter()
+            .filter(|&entity| !disabled.contains(entity) && inside(entity))
+            .collect()
+    };
+    // Nothing focused, or the focus on a widget gone, hidden or under a dialog: the first widget
+    // takes it, whatever moved it, instead of the press doing nothing.
     let order = || -> Vec<Entity> {
         reading_order(&widgets)
             .into_iter()
-            .filter(|&entity| !disabled.contains(entity) || Some(entity) == focused)
+            .filter(|&entity| inside(entity) && (!disabled.contains(entity) || Some(entity) == focused))
             .collect()
     };
     let lost = focused.is_none_or(|entity| {
-        widgets
-            .get(entity)
-            .map_or(true, |(_, node, _, visibility)| {
-                node.is_empty() || !visibility.get()
-            })
+        !inside(entity)
+            || widgets
+                .get(entity)
+                .map_or(true, |(_, node, _, visibility)| {
+                    node.is_empty() || !visibility.get()
+                })
     });
     if lost && (direction.is_some() || tab) {
         if let Some(&first) = order().first() {
@@ -211,34 +244,19 @@ fn navigate(
         ) {
             (Some(mut stepper), Some(step)) => stepper.step(step),
             _ => {
-                // Bevy's navigation skips hidden widgets but not disabled ones, which draw no
-                // focus: the focus seemed to go somewhere invisible before moving on (the user's
-                // report of 2026-11-23, on the first screen's greyed EDITOR, LEADERBOARD or
-                // ranked). Past those, on in the same direction; nothing usable that way, and
-                // the focus stays where it was.
-                let mut skipped = 0;
-                while let Ok(reached) = navigator.navigate(octant) {
-                    if !disabled.contains(reached) {
-                        break;
-                    }
-                    skipped += 1;
-                    if skipped > MAX_SKIPPED {
-                        if let Some(start) = focused {
-                            navigator
-                                .manual_directional_navigation
-                                .focus
-                                .set(start, FocusCause::Navigated);
-                        }
-                        break;
-                    }
-                }
-                if let (Some(start), Some(now)) = (focused, navigator.input_focus())
-                    && disabled.contains(now)
+                // The widget to go to is picked here rather than by Bevy's navigation (since
+                // v1.0.0-rc17, the user's word: "Il y a encore des deplacements dans l'UI a la
+                // croix qui sont bizarres, n'arrivent sur rien"). Bevy's looked at every widget on
+                // the screen, those behind an open dialog included, so the focus went under the
+                // dialog where nothing showed it; and it took disabled ones, which draw no focus
+                // (the user's report of 2026-11-23). Now only what can be seen and used.
+                if let Some(start) = focused
+                    && let Some(next) = pick_toward(start, octant, &candidates(), &widgets)
                 {
                     navigator
                         .manual_directional_navigation
                         .focus
-                        .set(start, FocusCause::Navigated);
+                        .set(next, FocusCause::Navigated);
                 }
             }
         }
@@ -282,6 +300,114 @@ fn reading_order(widgets: &Query<NavigableWidget, With<AutoDirectionalNavigation
         rest = &rest[len..];
     }
     order
+}
+
+/// Where a move from `start` toward `octant` goes among `candidates`, by where they are drawn.
+fn pick_toward(
+    start: Entity,
+    octant: CompassOctant,
+    candidates: &[Entity],
+    widgets: &Query<NavigableWidget, With<AutoDirectionalNavigation>>,
+) -> Option<Entity> {
+    let rect = |entity: Entity| {
+        widgets
+            .get(entity)
+            .ok()
+            .map(|(_, node, transform, _)| Rect::from_center_size(transform.translation, node.size()))
+    };
+    let from = rect(start)?;
+    let others: Vec<(Entity, Rect)> = candidates
+        .iter()
+        .filter(|&&entity| entity != start)
+        .filter_map(|&entity| Some((entity, rect(entity)?)))
+        .collect();
+    best_toward(from, octant, &others)
+}
+
+/// The nearest of `others` toward `octant` from `from`, in screen coordinates (y down): ahead of
+/// it, and lined up with it rather than off to the side, a widget overlapping its column (or row)
+/// counting as lined up.
+fn best_toward(from: Rect, octant: CompassOctant, others: &[(Entity, Rect)]) -> Option<Entity> {
+    let direction = match octant {
+        CompassOctant::North => Vec2::NEG_Y,
+        CompassOctant::South => Vec2::Y,
+        CompassOctant::West => Vec2::NEG_X,
+        CompassOctant::East => Vec2::X,
+        _ => return None,
+    };
+    let across = direction.perp().abs();
+    others
+        .iter()
+        .filter_map(|&(entity, rect)| {
+            let offset = rect.center() - from.center();
+            let ahead = offset.dot(direction);
+            // Ahead of the start's own edge, not merely of its center.
+            let reach = (from.half_size() + rect.half_size()).dot(direction.abs()) * 0.4;
+            if ahead <= reach {
+                return None;
+            }
+            let sideways = offset.dot(across).abs();
+            let overlap = (from.half_size() + rect.half_size()).dot(across);
+            let gap = (sideways - overlap).max(0.0);
+            Some((entity, ahead + SIDEWAYS_WEIGHT * gap + 0.1 * sideways))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(entity, _)| entity)
+}
+
+/// The focus moved to a widget a list has scrolled out of sight: the list scrolls to show it.
+fn scroll_focus_into_view(
+    focus: Res<InputFocus>,
+    mut last: Local<Option<Entity>>,
+    nodes: Query<(&ComputedNode, &UiGlobalTransform)>,
+    parents: Query<&ChildOf>,
+    mut scrollers: Query<(&mut ScrollPosition, &Node)>,
+) {
+    let now = focus.get();
+    if now == *last {
+        return;
+    }
+    *last = now;
+    let Some(focused) = now else {
+        return;
+    };
+    let Ok((node, transform)) = nodes.get(focused) else {
+        return;
+    };
+    let (top, bottom) = (
+        transform.translation.y - node.size().y / 2.0,
+        transform.translation.y + node.size().y / 2.0,
+    );
+    let ancestors = std::iter::successors(parents.get(focused).ok().map(ChildOf::parent), |&e| {
+        parents.get(e).ok().map(ChildOf::parent)
+    });
+    for ancestor in ancestors {
+        let Ok((mut scroll, style)) = scrollers.get_mut(ancestor) else {
+            continue;
+        };
+        if style.overflow.y != OverflowAxis::Scroll {
+            continue;
+        }
+        let Ok((list, list_transform)) = nodes.get(ancestor) else {
+            return;
+        };
+        let (list_top, list_bottom) = (
+            list_transform.translation.y - list.size().y / 2.0,
+            list_transform.translation.y + list.size().y / 2.0,
+        );
+        // Physical pixels on screen, logical in the scroll position.
+        let shift = if top < list_top {
+            top - list_top
+        } else if bottom > list_bottom {
+            bottom - list_bottom
+        } else {
+            0.0
+        };
+        if shift != 0.0 {
+            scroll.y = (scroll.y + shift * list.inverse_scale_factor()).max(0.0);
+        }
+        return;
+    }
 }
 
 type NavigableWidget = (
@@ -399,6 +525,30 @@ mod tests {
     /// A direction moves the focus once when pressed, then, held, again after a delay and every
     /// interval; a press let go within a frame still counts, and so does a fresh press of the same
     /// direction right after.
+    #[test]
+    fn a_move_goes_to_what_is_lined_up_ahead() {
+        let at = |x: f32, y: f32, w: f32, h: f32| Rect::from_center_size(Vec2::new(x, y), Vec2::new(w, h));
+        let mut world = World::new();
+        let [below, below_wide, beside, far_side, above] =
+            [(); 5].map(|_| world.spawn_empty().id());
+        let from = at(100.0, 100.0, 80.0, 30.0);
+        let others = [
+            (below, at(100.0, 160.0, 80.0, 30.0)),
+            (below_wide, at(300.0, 140.0, 80.0, 30.0)),
+            (beside, at(200.0, 100.0, 80.0, 30.0)),
+            (far_side, at(400.0, 105.0, 80.0, 30.0)),
+            (above, at(110.0, 40.0, 200.0, 30.0)),
+        ];
+        // Down: the one in its column, though another is nearer but off to the side.
+        assert_eq!(best_toward(from, CompassOctant::South, &others), Some(below));
+        // Right: the nearer of the two in its row; nothing of a row below.
+        assert_eq!(best_toward(from, CompassOctant::East, &others), Some(beside));
+        // Up: the wide one overlapping its column.
+        assert_eq!(best_toward(from, CompassOctant::North, &others), Some(above));
+        // Left: nothing there, so the focus stays.
+        assert_eq!(best_toward(from, CompassOctant::West, &others), None);
+    }
+
     #[test]
     fn a_held_direction_repeats_as_the_stick_does() {
         let mut repeat = Repeat::default();

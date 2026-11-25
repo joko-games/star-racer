@@ -600,6 +600,7 @@ fn spawn_dialog(
         .spawn((
             SettingsRoot,
             DespawnOnExit(screen),
+            super::navigation::Modal,
             GlobalZIndex(10),
             Node {
                 position_type: PositionType::Absolute,
