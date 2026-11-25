@@ -590,15 +590,12 @@ fn spawn_login(
                 ))
                 .insert(small(170.0))
                 .observe(ask_for_leaderboard);
-                // Greyed for good: the editor was taken out of the game, to be made again from
-                // nothing (the user's word on 2026-11-23: "on reprendra de zéro plus tard"). Not
-                // on a phone, where it never was.
+                // The level editor, made again from nothing (since v1.0.0-rc11, the user's word on
+                // 2026-11-25; docs/editor.md). Not on a phone: it is laid out for a mouse.
                 if !touchscreen.0 {
-                    row.spawn((
-                        button(&fonts, ButtonKind::Quiet, "EDITOR"),
-                        InteractionDisabled,
-                    ))
-                    .insert(small(120.0));
+                    row.spawn((ActionButton, button(&fonts, ButtonKind::Quiet, "EDITOR")))
+                        .insert(small(120.0))
+                        .observe(open_editor);
                 }
                 // Needs nobody to come in as and no server: always there, as the settings are.
                 row.spawn(button(&fonts, ButtonKind::Quiet, "GARAGE"))
@@ -710,7 +707,9 @@ fn connect_scripted(
         ScriptedLogin::Account { create: true, .. } => LoginMode::Create,
         ScriptedLogin::Account { .. } => LoginMode::SignIn,
     };
-    *intent = if script.quick_play {
+    *intent = if script.editor {
+        Intent::Editor
+    } else if script.quick_play {
         Intent::QuickPlay
     } else if script.ranked {
         Intent::Ranked
@@ -853,6 +852,7 @@ fn carry_out_intent(
         Intent::Browse => next_screen.set(Screen::Lobbies),
         Intent::QuickPlay => network.send(ClientMessage::QuickPlay),
         Intent::Ranked => network.send(ClientMessage::QueueRanked),
+        Intent::Editor => next_screen.set(Screen::Editor),
         // Taken care of above.
         Intent::Leaderboard => {}
     }
@@ -995,6 +995,10 @@ fn toggle_ranked(_: On<Activate>, mut start: Start, ladder: Res<Ladder>) {
     } else {
         start.go(Intent::Ranked);
     }
+}
+
+fn open_editor(_: On<Activate>, mut start: Start) {
+    start.go(Intent::Editor);
 }
 
 fn browse(_: On<Activate>, mut start: Start, ladder: Res<Ladder>) {

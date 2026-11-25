@@ -65,6 +65,10 @@ pub struct Script {
     pub sound_graphics: bool,
     /// Open the garage, to look at it.
     pub garage: bool,
+    /// Once connected, open the level editor (since v1.0.0-rc11).
+    pub editor: bool,
+    /// In the editor, press TRY once the draft builds.
+    pub editor_try: bool,
     /// Let the autopilot drive, in this style.
     pub autopilot: Option<Style>,
     /// With the autopilot, also press the jump every `JUMP_EVERY` seconds and hold it this long:
@@ -386,6 +390,14 @@ pub fn read() -> Settings {
         #[arg(long, conflicts_with_all = ["who", "settings"])]
         garage: bool,
 
+        /// Once connected (with --guest or --account), open the level editor.
+        #[arg(long)]
+        editor: bool,
+
+        /// In the editor, press TRY once the draft builds: race it alone.
+        #[arg(long, requires = "editor")]
+        editor_try: bool,
+
         /// Player identity directory. Useful to run several clients on the same machine.
         #[arg(long)]
         identity: Option<PathBuf>,
@@ -490,6 +502,8 @@ pub fn read() -> Settings {
             settings: args.settings || args.sound_graphics,
             sound_graphics: args.sound_graphics,
             garage: args.garage,
+            editor: args.editor,
+            editor_try: args.editor_try,
             autopilot: autopilot_style(args.autopilot, args.autopilot_drift),
             jump: args.jump,
             dash: args.dash,
@@ -570,6 +584,8 @@ pub fn read() -> Settings {
             settings: has("settings") || has("sound_graphics"),
             sound_graphics: has("sound_graphics"),
             garage: has("garage"),
+            editor: has("editor"),
+            editor_try: has("editor_try"),
             autopilot: autopilot_style(has("autopilot"), has("autopilot_drift")),
             jump: get("jump").and_then(|value| value.parse().ok()),
             dash: get("dash").and_then(|value| value.parse().ok()),

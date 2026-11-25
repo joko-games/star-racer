@@ -30,10 +30,11 @@ impl Plugin for BackdropPlugin {
             .add_systems(OnEnter(Screen::Lobbies), show)
             .add_systems(OnEnter(Screen::Garage), show)
             .add_systems(OnEnter(Screen::Lobby), hide)
+            .add_systems(OnEnter(Screen::Editor), hide)
             .add_systems(
                 Update,
                 (frame_camera, scroll)
-                    .run_if(not(in_state(Screen::Lobby))),
+                    .run_if(not(in_state(Screen::Lobby)).and_then(not(in_state(Screen::Editor)))),
             );
     }
 }

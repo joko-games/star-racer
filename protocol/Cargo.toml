@@ -1,6 +1,6 @@
 [package]
 name = "star-racer-protocol"
-version = "1.0.0-rc10"
+version = "1.0.0-rc11"
 edition = "2024"
 license = "Unlicense"
 

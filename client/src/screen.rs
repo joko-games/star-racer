@@ -30,6 +30,8 @@ pub enum Screen {
     Lobby,
     /// Choosing and painting a pod, from the first screen.
     Garage,
+    /// Laying a circuit, from the first screen (docs/editor.md).
+    Editor,
 }
 
 /// What the player asked for on the login screen, to carry out once connected.
@@ -42,6 +44,8 @@ pub enum Intent {
     QuickPlay,
     Ranked,
     Leaderboard,
+    /// The level editor, which needs the server to try a circuit.
+    Editor,
 }
 
 /// Where a player who leaves a lobby goes back to: the menu they came from.

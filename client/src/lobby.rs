@@ -79,6 +79,26 @@ impl Tracks {
         }
     }
 
+    /// Keeps the circuit the editor is trying, under the key the server races it as
+    /// (`TRY_TRACK`), for the lobby to draw: the server never lists it.
+    pub fn store_try(
+        &mut self,
+        description: &TrackDescription,
+        track: Track,
+        images: &mut Assets<Image>,
+    ) {
+        let thumbnail = images.add(thumbnail::render(&track));
+        self.0.insert(
+            star_racer_protocol::TRY_TRACK.to_owned(),
+            TrackEntry {
+                description: description.clone(),
+                track: Arc::new(track),
+                thumbnail,
+                author: None,
+            },
+        );
+    }
+
     /// The track's name, or its key if the server did not send it.
     pub fn name<'a>(&'a self, key: &'a str) -> &'a str {
         self.0

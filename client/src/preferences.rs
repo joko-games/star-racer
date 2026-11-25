@@ -246,6 +246,11 @@ pub struct StoredPreferences {
 }
 
 impl StoredPreferences {
+    /// Where the choices are kept, for what else is kept beside them (the editor's draft).
+    pub fn store(&self) -> &IdentityStore {
+        &self.store
+    }
+
     fn load(store: IdentityStore) -> Self {
         let current = match store.read(SLOT) {
             Some(text) => match ron::from_str::<Preferences>(&text) {

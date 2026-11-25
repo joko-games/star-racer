@@ -1,103 +1,92 @@
 # The level editor
 
-**Taken out of the game in v0.1.10** (2026-11-23, the user's word: "on reprendra de zéro plus
-tard"): `client/src/editor/` is gone, the first screen keeps its EDITOR button greyed, and the
-`--editor` and `--editor-try` options went with it. The server still takes circuits published
-before (`--user-tracks`) and the protocol still carries trying and publishing, for the editor to
-come. What follows describes the one that was, for when it is made again.
+Made again from nothing in v1.0.0-rc11 (2026-11-25), at the user's word: "Il faut que ce soit +
+permissif pour les niveaux, et le l'éditeur, que tu commences maintenant [...] Faire le début de
+l'éditeur". Asked, they chose it **in the game**, and a first version that **lays a circuit, tries
+it and keeps it locally**; publishing waits for the accounts, which are to be the site's. The
+circuits were made freer first, in v1.0.0-rc10 (crossings, a width per stretch, slopes to 40
+degrees: [Tracks](tracks.md#crossings)), so the editor can lay all of that.
 
-Since v1.0.0-rc2, at the user's word: "Pour la v1.0.0rc2, il n'y aura qu'une chose, et un gros
-morceau : fais moi un éditeur de niveau". Asked, they chose it **in the game** (natively and in the
-browser, not a tool apart), its circuits **sent to the server** for every lobby to race on, and
-**everything editable** from the first version: the road, what is played on it, and the scenery.
+An editor came before, from v1.0.0-rc2 to v0.1.10 (in the history before the squashes), with tabs
+for the road, the relief, what is played and the scenery; it was taken out at the user's word on
+2026-11-23, "on reprendra de zéro plus tard", having been found hard to use ("c'est pas intuitif du
+tout"). This one starts small and simple, the road alone, laid piece by piece.
 
-## What it is
+## What the player sees
 
-A screen of its own, EDITOR on the first screen (not on a phone, the editor being laid out for a
-mouse and a wide screen). It needs the server, to try and to publish, so the button connects first,
-as LOBBIES does (`Intent::Editor`). Code: `client/src/editor/` (`mod.rs` the state, the draft and
-the actions; `model.rs` the parts and their numbers, without anything shown; `map.rs` the circuit
-seen from above; `panel.rs` the panel), and `sim/src/track/editing.rs`.
+EDITOR on the first screen (not on a phone: it is laid out for a mouse and a wide screen). It
+connects first, as LOBBIES does (`Intent::Editor`), the server being needed to try a circuit. Code:
+`client/src/editor/` (`mod.rs` the state, undo, keeping the draft and trying it; `model.rs` the
+pieces and the track file they make, nothing shown; `map.rs` the circuit seen from above;
+`panel.rs` the panel).
 
-- **The map** is the circuit as it will be raced, built by the race's own code
-  (`track::spawn_scene`, the road, walls, markings, gaps, pads, checkpoints and scenery; not the
-  city's traffic and searchlights), seen from above and a little behind, so the relief reads. The
-  wheel zooms, the right or middle button drags, WASD and the arrows pan; it frames the whole
-  circuit on opening and on LOAD. A left click puts the **cursor** (a magenta bar across the road)
-  where it falls on the road, and picks the part of the open tab nearest it: the segment under it
-  on ROAD, the nearest part within 80 m on the others. The part selected is drawn white.
-- **The panel**, down the left: the circuit's name (typed), the tabs ROAD, RELIEF, GAME and
-  SCENERY, what can be ADDed to the open tab (at the cursor; a segment after the one selected),
-  the list of its parts (the wheel scrolls it), the numbers of the part selected, each with «, ‹, ›
-  and » (one step and ten), DELETE, what the editor has to say, the circuit's length and how many
-  segments it added to close it, or why it does not build, LOAD with the server's circuits, and
-  TRY, PUBLISH, NEW and BACK (Escape too).
-- **The parts**: ROAD, the road's width and the segments (straight: length; turn: angle, radius,
-  transition, banking); RELIEF, the heights; GAME, gaps, breaches, bottlenecks, pads and checkpoints;
-  SCENERY, the ten kinds of prop, with their sizes (a new one takes the defaults a track file
-  gets, read through the file format itself). The heights and checkpoints stay in order along the
-  lap, the one moved followed. Every number keeps within bounds; a turn stepped through zero
-  turns the other way. The bounds are generous: what the track file refuses (a gap too near the
-  line, a checkpoint in a gap, a road that overlaps itself, a slope over 25°) is said in the status,
-  in the simulation's own words.
+- **The map**, right of the panel: the circuit as it will be raced, built by the race's own code
+  (`track::spawn_scene`) at the graphics level's detail, seen from above and a little behind. The
+  piece selected is drawn as a magenta band down the road, the way back to the line the editor
+  added as a pale blue one; a road that does not close is drawn as a red line as far as it goes.
+  The wheel zooms, the right or middle button drags, WASD and the arrows pan; a left click picks
+  the piece under the mouse. It frames the whole circuit on opening and on NEW.
+- **The panel**, down the left: THE ROAD, the pieces in order (a click selects one; the wheel
+  scrolls the list); + STRAIGHT, + LEFT and + RIGHT, which add a piece after the one selected,
+  as wide and as high as it, a straight of 200 m or a turn of 90 degrees with a radius of 100 m;
+  the numbers of the piece selected, each with «, ‹, › and » (ten steps and one); DELETE, UNDO and
+  REDO; THE WAY BACK, the radius of the turns that close the road; the circuit's length and how
+  many pieces it took to close it, in green, or why it does not build, in red, in the simulation's
+  own words; TRY, NEW and BACK.
+- **Keys**: Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes (up to 100 changes back), Delete removes
+  the piece selected, Escape goes back to the first screen.
+
+## The pieces
+
+A piece is a straight or a turn, with everything the player sets on it (`model::Piece`):
+
+| | Straight | Turn |
+| --- | --- | --- |
+| LENGTH | 10 to 2000 m, by 10 | |
+| ANGLE | | 5 to 350 degrees left or right, by 5; stepped through zero, it turns the other way |
+| RADIUS | | 20 to 800 m, by 5 (more than half the road's width) |
+| BANKING | | 0 to 50 degrees, by 2 |
+| WIDTH | 12 to 120 m, by 2 | 12 to 120 m, by 2 |
+| HEIGHT | -100 to 200 m, by 2: the road's height where the piece ends | the same |
+
+A turn eases in and out of its curve over a transition of a fifth of its length, at most 40 m, so
+steering into it is progressive and a banked turn has the transition it needs to rise into its
+banking.
+
+The track file wants the widths as changes along the lap and the heights as a relief, so the
+editor places them (`Draft::description`): a change of width at the start of every piece not as
+wide as the one before it, blended over 30 m, and back to the first piece's width on the way home;
+a height at the end of every piece, the line at height 0, the way home coming back down to it. A
+piece raised 14 m or more over the road it crosses makes a bridge ([Tracks](tracks.md#crossings));
+less, and the status says where the two are too close.
 
 ## Closing the road
 
-A circuit's segments must turn through one whole turn and end where they began (docs/tracks.md),
-which nobody laying turns by hand hits. So the player lays the road as far as they like, and the
-editor closes it: `editing::closing` finds the shortest way back to the start line, heading `+x`,
-made of a turn, a straight and a turn of one radius (the shortest path of a car that can only turn
-that tightly, Dubins' four words, LSL, RSR, LSR and RSL), keeping only those that turn the whole
-circuit through exactly one turn. Its turns have no transition nor banking; the radius is the
-editor's (70 m to begin with, CLOSING TURNS on the ROAD part, 20 to 500 m). The stretch it adds is
-drawn in a pale blue line on the map. A circuit already closed, as a published one loaded back,
-gets nothing added. When the road cannot be closed, or the closed circuit does not build, the
-road as laid is drawn in red and the status says why.
+A circuit must turn through one whole turn and end where it began, which nobody laying turns by
+hand hits. So the player lays the road as far as they like, and the editor closes it:
+`editing::closing` finds the shortest way back to the line, heading `+x`, made of a turn, a
+straight and a turn of one radius (THE WAY BACK, 120 m to begin with, 30 to 500), keeping only the
+ways that turn the whole circuit through exactly one turn.
 
-## Trying and publishing
+## Trying, and keeping the draft
 
-- **TRY** (`ClientMessage::TryTrack`): the server checks the circuit as it would a published one,
-  then opens a lobby of one, one lap again and again, that the lobby list never shows
-  (`Registry::trying`), its track keyed `~try` (`TRY_TRACK`): the client already holds the
-  circuit, having sent it, and keeps it under that key for the lobby to draw, forgetting it on
-  coming back to the menus. Leaving the lobby comes back to the editor. A circuit that does not
-  build is refused with `JoinError::InvalidTrack`. `--editor --editor-try` presses it for an
-  unattended run.
-- **PUBLISH** (`ClientMessage::PublishTrack`, answered `ServerMessage::Published`): an account's,
-  never a guest's. The key is `user-` and the name in lower case, every run of other characters a
-  dash (`content::user_track_key`); another player's circuit, or one of the game's, of the same
-  name (whatever its case) is `NameTaken`; the author's own is replaced. The server builds it
-  (`content::check_user_track`: at most `MAX_TRACK_ITEMS`, 400, of any list, a lap of at most
-  `MAX_TRACK_LENGTH`, 20 km, and road wide enough for the car everywhere), keeps it in its own file
-  (`user-tracks/<key>.ron` beside the ladder, `--user-tracks`, which deployments leave alone, with
-  the author's identity and name), and sends every browsing player the whole list again
-  (`ServerMessage::Tracks`). `TrackInfo::author` names who published it, shown in the lobby
-  creation dialog ("by Ada"). Quick play and ranked keep to the game's own circuits.
-- **The draft** is kept beside the player's other choices (`editor.ron` next to `preferences.ron`),
-  so it is there again on the next run; NEW starts again from a straight, a banked half turn and a
-  straight; LOAD takes any of the server's circuits as a new draft, all its segments kept.
+- **TRY** (`ClientMessage::TryTrack`): the server checks the circuit as it would any other, then
+  opens a lobby of one racing it, which the lobby list never shows (`TRY_TRACK`). The client keeps
+  the circuit under that key for the lobby to draw (`Tracks::store_try`), and leaving the lobby
+  comes back to the editor (`AfterLobby`), as it was.
+- **The draft** is kept beside the player's other choices, in `editor.ron` (natively in the user
+  data folder, in a browser its local storage), written on leaving the editor, so it survives a
+  restart; NEW starts again from the first circuit (a straight, a long left, a straight).
+- **Not yet**: publishing (it waits for the accounts on the site; the server still takes
+  `PublishTrack` from an account), naming the circuit, what is played on the road (gaps, pads,
+  checkpoints, breaches) and the scenery.
 
-## Made easier to use
+## Checked
 
-In v1.0.0-rc5, at the user's word "Améliore l'éditeur, c'est pas intuitif du tout":
-
-- **Said on screen.** A line at the bottom of the map says what the mouse and the keys do, and a
-  line under the tabs what the open tab is for (`tab_help`).
-- **The mouse.** The part of the open tab nearest the mouse is lit grey as it passes; a click
-  selects it, white; held on a part placed along the lap, it slides the part along the road, the
-  circuit built again when it is let go (`map::pointer`).
-- **Numbers on the road.** Each segment's number stands over the middle of its stretch, as the
-  list numbers it, blue for the one selected (`labels.rs`).
-- **Undo.** UNDO and REDO, Ctrl+Z and Ctrl+Y (or Ctrl+Shift+Z), a hundred drafts back; NEW and
-  LOAD are undone too. Delete removes the part selected. FLIP turns a turn the other way.
-
-- **Reuse.** DUPLICATE (Ctrl+D) copies the selected piece. A copied road segment is inserted just
-  after its source; any part placed along the lap is copied at the magenta cursor, retaining every
-  other setting. Click an empty place on the road to put that cursor before duplicating: this makes
-  a row of pads, props or checkpoints without resetting all their numbers.
-
-## Not done
-
-- Segments are not dragged: a turn's angle and a straight's length are stepped with their numbers.
-- Not on a phone.
-- A published circuit cannot be taken down from the game: its file is removed on the machine.
+`--editor` (with `--guest`) opens it once connected, and `--editor-try` presses TRY as soon as the
+draft builds, for unattended looks: captures of the first circuit, of a draft laid as a figure
+eight whose raised diagonal crosses the road twice (1.54 km, green), and of TRY racing that draft
+on the autopilot, the server opening its lobby of one. The pieces' rules are covered by tests
+(`model.rs`: the first circuit builds, pieces added and stepped, widths and heights where their
+pieces are, a crossing refused flat and built raised; `mod.rs`: undo and redo). Not checked: any of
+it by hand, synthetic clicks not reaching the window.

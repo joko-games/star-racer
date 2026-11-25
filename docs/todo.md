@@ -65,7 +65,9 @@ the French will go through (`client/src/i18n.rs`, only QUICK PLAY translated yet
    they chose the editor in the game, crossings, a width per segment and steeper slopes first, and
    a first editor that lays, tries and saves locally, publishing waiting for the accounts on the
    site): the circuits done in v1.0.0-rc10 (docs/tracks.md#crossings, #widths, the slopes to 40
-   degrees); the editor next.
+   degrees); the editor's first version in v1.0.0-rc11 (docs/editor.md): the road laid piece by piece,
+   each with its width, banking and height, closed by itself, tried alone and kept locally; next,
+   what the user makes of it, and what is played on the road and the scenery.
 
 Also waiting:
 

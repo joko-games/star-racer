@@ -187,6 +187,8 @@ fn menu_panel_place(screen: Screen, touchscreen: bool) -> Option<JustifyContent>
     match screen {
         // The lobby's HUD draws its own.
         Screen::Lobby => None,
+        // The editor's panel fills the left side to the bottom; FEEDBACK is on the first screen.
+        Screen::Editor => None,
         // A phone's garage and list fill the screen to its bottom edge; FEEDBACK is on the first
         // screen.
         Screen::Garage | Screen::Lobbies if touchscreen => None,

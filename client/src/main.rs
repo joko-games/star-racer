@@ -12,6 +12,7 @@ mod display;
 mod city;
 mod controls;
 mod dice;
+mod editor;
 mod geometry;
 mod i18n;
 mod latency;
@@ -159,6 +160,7 @@ fn main() {
         },
     ));
     app.add_plugins(turbo_fx::TurboFxPlugin);
+    app.add_plugins(editor::EditorPlugin);
     #[cfg(not(target_arch = "wasm32"))]
     app.add_plugins(window_icon::WindowIconPlugin);
     #[cfg(not(target_arch = "wasm32"))]

@@ -186,6 +186,8 @@ fn spawn(mut commands: Commands, fonts: Res<Fonts>, touchscreen: Res<Touchscreen
 fn shown(screen: Screen, current: &CurrentLobby) -> bool {
     match screen {
         Screen::Login | Screen::Lobbies | Screen::Garage => true,
+        // The editor's panel and map fill the screen.
+        Screen::Editor => false,
         Screen::Lobby => current
             .0
             .as_ref()

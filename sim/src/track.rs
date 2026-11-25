@@ -275,6 +275,24 @@ pub enum Segment {
     },
 }
 
+impl Segment {
+    /// How long the centerline of this segment is, in meters: a straight's length, a turn's arc and
+    /// its two transitions together (which cover the angle `transition / radius` between them, so
+    /// the arc is `transition` shorter than a plain turn of that angle and the whole `transition`
+    /// longer).
+    pub fn length(&self) -> f32 {
+        match *self {
+            Segment::Straight { length } => length,
+            Segment::Turn {
+                angle,
+                radius,
+                transition,
+                ..
+            } => angle.abs().to_radians() * radius + transition,
+        }
+    }
+}
+
 /// One height of the relief: the centerline passes `height` meters above the ground, `at` meters
 /// along the lap.
 ///
