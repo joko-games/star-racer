@@ -760,6 +760,48 @@ it is) now does something, decided by the stick on the tick of the press:
 The autopilot holds the button with some hysteresis (it lets go only once the stick falls under
 0.7 into the drift), so it does not press again by accident.
 
+### Crisp, not soapy
+
+v1.0.0-rc14, the user's word on 2026-11-25, having driven rc13: "la voiture est savonneuse dans
+ses trajectoires, insiste bien là-dessus". Measured first on the shipped car, gripping from top
+speed (`how_the_shipped_car_turns` in `car.rs`, run by hand), three things made the path soft:
+
+- **The rotation gathered and died slowly** (`yaw_acceleration` 200°/s²): at half lock the path
+  had turned 0.8 degree after a tenth of a second, and let go of, it went on turning for 0.4 s,
+  6 degrees more, the turn dying at 48, 40, 31, 21, 11°/s from one twentieth of a second to the
+  next.
+- **Steering alone broke into a drift**: at three quarters lock the nose unscrewed past
+  `drift_entry_angle` (11, `grip_swing_angle` 16) after 0.4 s, without the button; the body swung
+  50 degrees across and the path went on turning 18 degrees after the stick was let go.
+- **The body unscrewed 8 degrees at half lock** while gripping, drawn as if the car slid.
+
+And what is drawn added to it: the body's roll rocked out of every turn (1 Hz, damped 0.4, up to
+9 degrees) and its pitch bobbed (damped 0.35), the car riding like a boat.
+
+Now, in `car.ron`: `yaw_acceleration` 600, `steering_rate` 22 (14), `grip` 45 (30),
+`grip_swing_angle` 10 and `drift_entry_angle` 8.5. In `weight.rs` the roll at 1.8 Hz damped 0.8 up
+to 5 degrees and the pitch at 1.8 Hz damped 0.7; in `camera.rs` the camera back behind the car at
+7 per second (5). Measured the same way:
+
+| | before | after |
+| --- | --- | --- |
+| path at 0.1 s, half lock | 0.8° | 2.3° |
+| path at 0.1 s, full lock | 0.8° | 2.7° |
+| path turned on after letting go of half lock | 5.8° | 2.4° |
+| turn rate let go of 0.6 lock, each 0.05 s | 48, 40, 31, 21, 11, 4°/s | 39, 15, 5, 2°/s |
+| slide at three quarters lock | 1.4° (then a drift) | 1.0° |
+| body unscrewed at half lock | 8° | 5° |
+| three quarters lock | breaks into a drift at 0.4 s | grips, 65°/s |
+| full lock | breaks into a drift at 0.4 s | breaks into a drift at 0.3 s |
+
+The drift itself is untouched but for what crisper steering brings: a tapped drift's path is 2
+degrees further round at 0.25 and 0.5 s, a drift broken into at full lock has turned further by the
+time it breaks (35 degrees at 0.5 s, 23 before), and one let go of turns on 15 degrees, not 21.5;
+`the_shipped_drift_keeps_its_measured_feel` holds the new figures and now lists every one that
+moves. The Hippodrome is still lapped in every style without a fall, drifting faster than gripping.
+To be judged: all of it; to try in `car.ron`, `yaw_acceleration` (600; 400 to 900),
+`steering_rate` (22; 18 to 30) and `grip` (45).
+
 ### Star Fly, at once and out of a fall
 
 (v0.1.80.)

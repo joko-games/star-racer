@@ -3382,11 +3382,12 @@ mod tests {
             }
             car
         };
+        let off = std::cell::RefCell::new(Vec::new());
         let near = |what: &str, value: f32, expected: f32, margin: f32| {
-            assert!(
-                (value - expected).abs() <= margin,
-                "{what}: {value:.1} where v1.0.0-rc1 had {expected}"
-            );
+            if (value - expected).abs() > margin {
+                off.borrow_mut()
+                    .push(format!("{what}: {value:.2} where it was measured at {expected}"));
+            }
         };
         // Body angle and how far the travel has turned, in degrees, after `seconds`, the button
         // held for `hold` ticks.
@@ -3399,7 +3400,7 @@ mod tests {
             let turned = wrap_angle(car.velocity.to_angle() - start).to_degrees().abs();
             (car.body.abs().to_degrees(), turned)
         };
-        for (seconds, body, path) in [(0.1, 11.4, 4.4), (0.25, 26.4, 15.2), (0.5, 48.2, 32.9)] {
+        for (seconds, body, path) in [(0.1, 11.4, 4.4), (0.25, 26.4, 17.2), (0.5, 48.2, 35.0)] {
             let (b, p) = drift(3, seconds);
             near(&format!("tapped, body at {seconds} s"), b, body, 2.0);
             near(&format!("tapped, path at {seconds} s"), p, path, 2.0);
@@ -3420,12 +3421,15 @@ mod tests {
         let ((held_lost, held_charge), (_, tapped_charge)) = (held_for(usize::MAX), held_for(3));
         assert!(held_lost > -0.5, "held, the drift lost {held_lost} m/s in a second");
         near("held, charge against a tap's", held_charge / tapped_charge, 1.67, 0.1);
-        for (seconds, body, path) in [(0.5, 20.2, 22.9), (0.75, 43.0, 41.4)] {
+        for (seconds, body, path) in [(0.5, 22.4, 35.1), (0.75, 45.4, 53.2)] {
             let (b, p) = drift(0, seconds);
             near(&format!("broken into, body at {seconds} s"), b, body, 2.0);
             near(&format!("broken into, path at {seconds} s"), p, path, 2.0);
         }
 
+        // Since v1.0.0-rc14 the car turns more crisply (docs/simulation.md#crisp-not-soapy): a drift
+        // broken into has turned further by the time it breaks, and one let go of turns on 15
+        // degrees, not 21.5.
         // Let go of after a second: back to gripping in under half a second, on a curve.
         let mut car = fast();
         for tick in 0..ticks(1.0) {
@@ -3439,7 +3443,7 @@ mod tests {
         }
         near("let go of, seconds", ticks_out as f32 * TICK_SECONDS, 0.58, 0.04);
         let turned = wrap_angle(car.velocity.to_angle() - travel).to_degrees().abs();
-        near("let go of, path", turned, 21.5, 2.0);
+        near("let go of, path", turned, 15.4, 2.0);
 
         // Carried over through an S, the button held: the body 30 degrees past the line (45 until
         // v0.1.77, when a held drift swung out to 55 degrees; it stops at 36 now).
@@ -3453,6 +3457,76 @@ mod tests {
             ticks_over += 1;
         }
         near("carried over, seconds", ticks_over as f32 * TICK_SECONDS, 0.85, 0.04);
+        let off = off.into_inner();
+        assert!(off.is_empty(), "
+{}", off.join("
+"));
+    }
+
+    /// How the shipped car follows the stick while gripping, printed: run by hand,
+    /// `--ignored --nocapture`.
+    #[test]
+    #[ignore = "a measure, run by hand"]
+    fn how_the_shipped_car_turns() {
+        let tuning: CarTuning = ron::from_str(include_str!("../../server/data/car.ron")).unwrap();
+        let track = Track::build(&open_track()).unwrap();
+        let fast = || {
+            let mut car = Car::new(Vec2::ZERO, 0.0);
+            for _ in 0..ticks(12.0) {
+                car.step(ACCELERATE, &tuning, &track);
+            }
+            car
+        };
+        for lock in [0.3f32, 0.5, 0.75, 1.0] {
+            let mut car = fast();
+            let start = car.velocity.to_angle();
+            let mut line = format!("lock {lock:.2}:");
+            let mut released_at = None;
+            for tick in 1..=ticks(2.5) {
+                let steer = if tick <= ticks(1.0) { lock } else { 0.0 };
+                car.step(CarInput::new(true, steer), &tuning, &track);
+                let path = wrap_angle(car.velocity.to_angle() - start).to_degrees();
+                let slip = wrap_angle(car.heading - car.velocity.to_angle()).to_degrees();
+                if [ticks(0.05), ticks(0.1), ticks(0.2), ticks(0.3), ticks(0.5), ticks(1.0)]
+                    .contains(&tick)
+                {
+                    line += &format!(
+                        " t{:.2} path {path:.1} yaw {:.0}/s slip {slip:.1} body {:.1} drift {} |",
+                        tick as f32 * TICK_SECONDS,
+                        car.yaw_rate.to_degrees(),
+                        car.body.to_degrees(),
+                        car.drift
+                    );
+                }
+                if tick == ticks(1.0) {
+                    released_at = Some(path);
+                }
+                if tick == ticks(2.5) {
+                    line += &format!(
+                        " after release the path turned {:.1} more, yaw {:.0}/s, speed {:.1}",
+                        path - released_at.unwrap(),
+                        car.yaw_rate.to_degrees(),
+                        car.velocity.length()
+                    );
+                }
+            }
+            println!("{line}");
+        }
+        // Released: the path still turning, tick by tick after letting go of full lock at 1 s.
+        let mut car = fast();
+        for _ in 0..ticks(1.0) {
+            car.step(CarInput::new(true, 0.6), &tuning, &track);
+        }
+        let mut line = String::from("let go of 0.6:");
+        let mut last = car.velocity.to_angle();
+        for tick in 1..=ticks(0.8) {
+            car.step(CarInput::new(true, 0.0), &tuning, &track);
+            if tick % 3 == 0 {
+                let now = car.velocity.to_angle();
+                line += &format!(" {:.1}", wrap_angle(now - last).to_degrees() / (3.0 * TICK_SECONDS));
+                last = now;
+            }
+        }
+        println!("{line} deg/s");
     }
 }
-

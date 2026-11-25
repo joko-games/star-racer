@@ -25,21 +25,25 @@ use crate::world;
 /// Earth's, in m/s²: what a car standing still feels, and what its springs carry without moving.
 const GRAVITY: f32 = 9.81;
 
-/// The body pitching about the car's width: nose up as it gathers speed, down as it loses it.
+/// The body pitching about the car's width: nose up as it gathers speed, down as it loses it. Damped
+/// to 0.7 since v1.0.0-rc14 (0.35 at 1.2 Hz before), so the nose no longer bobs after a boost.
 const PITCH: Spring = Spring {
-    frequency: 1.2,
-    damping: 0.35,
+    frequency: 1.8,
+    damping: 0.7,
     gain: 0.12 * PI / 180.0,
     limit: 6.0 * PI / 180.0,
 };
 /// The body rolling about the car's length, to the outside of a turn. Heavier since v0.1.44, at
 /// the user's word for more weight: slower to lean and to come back (1 Hz, 1.3 before), and
-/// further, 9 degrees where 6 was already reached at half lock at 209 km/h.
+/// further, 9 degrees where 6 was already reached at half lock at 209 km/h. Firmer since
+/// v1.0.0-rc14, at the user's word "la voiture est savonneuse dans ses trajectoires": at 1 Hz and
+/// 0.4 the body rocked like a boat out of every turn and swung back past level. Now it leans less,
+/// 5 degrees at most, and settles without swinging back.
 const ROLL: Spring = Spring {
-    frequency: 1.0,
-    damping: 0.4,
-    gain: 0.1 * PI / 180.0,
-    limit: 9.0 * PI / 180.0,
+    frequency: 1.8,
+    damping: 0.8,
+    gain: 0.07 * PI / 180.0,
+    limit: 5.0 * PI / 180.0,
 };
 /// The body sinking toward the road when it is pressed into it, and rising when it is lightened,
 /// in meters. Stiffer than the rest: a banking transition taken off the centerline lifts the car
