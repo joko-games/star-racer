@@ -39,6 +39,12 @@ versions that only record a deployment. A tag can be released again by hand from
 2. **Packages** each in a folder `star-racer/` with the binary, `LICENSE` (the Unlicense) and
    `FONT-LICENSE.txt` (Saira's OFL), as `star-racer-windows-x86_64.zip`,
    `star-racer-linux-x86_64.tar.gz` and `star-racer-macos-arm64.tar.gz`.
+   And, since v1.0.0-rc15 (the user's word on 2026-11-25: "Tu proposeras les binaires en
+   standalone aussi, et .exe pour windows"), the program alone, one file that runs as it is, its
+   fonts compiled in: `star-racer-windows-x86_64.exe`, `star-racer-linux-x86_64` and
+   `star-racer-macos-arm64`. The download page offers the first two under OR JUST THE PROGRAM;
+   they do not update themselves, and the Linux one has to be made runnable (`chmod +x`), a
+   download losing the permission.
 3. **Publishes** the release "Star Racer vX.Y.Z", marked latest, its notes the version's commit
    message, which says what changed and why. It publishes as long as Windows and Linux were built: GitHub's macOS
    runners are often out of capacity, the job then cancelled without a runner (twice for

@@ -30,12 +30,15 @@ jobs:
           - os: windows-latest
             asset: star-racer-windows-x86_64.zip
             binary: star-racer-client.exe
+            standalone: star-racer-windows-x86_64.exe
           - os: ubuntu-latest
             asset: star-racer-linux-x86_64.tar.gz
             binary: star-racer-client
+            standalone: star-racer-linux-x86_64
           - os: macos-latest
             asset: star-racer-macos-arm64.tar.gz
             binary: star-racer-client
+            standalone: star-racer-macos-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -76,6 +79,10 @@ jobs:
       - name: Package
         shell: bash
         run: |
+          # The program alone too, since v1.0.0-rc15 (the user's word on 2026-11-25: "Tu proposeras
+          # les binaires en standalone aussi, et .exe pour windows"): one file that runs as it is,
+          # its fonts inside it, nothing to unpack or install.
+          cp "target/release/${{ matrix.binary }}" "${{ matrix.standalone }}"
           mkdir -p package/star-racer
           cp "target/release/${{ matrix.binary }}" package/star-racer/
           cp LICENSE package/star-racer/
@@ -91,6 +98,11 @@ jobs:
         with:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.standalone }}
+          path: ${{ matrix.standalone }}
 
       # The Windows installer and the update feed, by Velopack (docs/installer.md): Setup.exe
       # installs the game for the user in one click, with its shortcuts, and the installed game
@@ -137,10 +149,11 @@ jobs:
         run: |
           ls -l assets
           for required in star-racer-windows-x86_64.zip star-racer-linux-x86_64.tar.gz \
+              star-racer-windows-x86_64.exe star-racer-linux-x86_64 \
               StarRacer-win-Setup.exe releases.win.json; do
             [ -f "assets/$required" ] || { echo "::error::$required was not built"; exit 1; }
           done
-          [ -f assets/star-racer-macos-arm64.tar.gz ] \
+          [ -f assets/star-racer-macos-arm64.tar.gz ] && [ -f assets/star-racer-macos-arm64 ] \
             || echo "::warning::no macOS build this time: released without it"
 
       # The notes are the version's commit message, which says what changed and why.

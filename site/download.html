@@ -135,6 +135,25 @@
       keyboard or both; on macOS, the browser version runs the same game, against the same players.
     </p>
   </div>
+  <!-- The program alone, one file that runs as it is (since v1.0.0-rc15, the user's word on
+       2026-11-25: "Tu proposeras les binaires en standalone aussi, et .exe pour windows"). -->
+  <div class="card" id="standalone">
+    <div class="caption">OR JUST THE PROGRAM</div>
+    <a class="download" data-standalone="windows"
+       href="https://github.com/joko-games/star-racer/releases/latest/download/star-racer-windows-x86_64.exe">
+      <strong>Windows</strong><span>64-bit · .exe</span>
+    </a>
+    <a class="download" data-standalone="linux"
+       href="https://github.com/joko-games/star-racer/releases/latest/download/star-racer-linux-x86_64">
+      <strong>Linux</strong><span>64-bit · binary</span>
+    </a>
+    <p class="note">
+      The game in a single file, nothing to install or unpack: put it anywhere and run it. It does
+      not update itself; download it again for a new version. On Linux, make it runnable first:
+      <code>chmod +x star-racer-linux-x86_64</code>. Windows asks before running it the first time
+      ("More info", then "Run anyway"), the build not being signed yet.
+    </p>
+  </div>
   <!-- The game server, with its data: the circuits and the car's tuning (since v0.1.14, the user's
        list of 2026-11-23). Packed by deploy/deploy.ps1 with the game's own README. -->
   <div class="card" id="server">
