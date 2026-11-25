@@ -32,6 +32,10 @@ use super::track::Track;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Encode, Decode)]
 pub struct Car {
     pub position: Vec2,
+    /// Meters along the lap of the road the car follows (since v1.0.0-rc10, docs/tracks.md#crossings):
+    /// where the road passes over itself, which of the two it is on. `None` until it is known, the
+    /// nearest road being taken then.
+    pub road: Option<f32>,
     /// Meters per second. Not necessarily along the heading: the car can slide.
     pub velocity: Vec2,
     /// Radians counter-clockwise from `+x`, in `[-π, π)`. What the car steers: while it grips,
@@ -695,7 +699,10 @@ impl Car {
     /// A car standing still on a starting grid slot.
     pub fn on_grid(track: &Track, slot: usize) -> Self {
         let (position, heading) = track.grid_slot(slot);
-        Self::new(position, heading)
+        Self {
+            road: Some(track.grid_distance(slot)),
+            ..Self::new(position, heading)
+        }
     }
 
     pub fn forward(&self) -> Vec2 {
@@ -750,6 +757,7 @@ impl Car {
         *self = Self {
             position: point.position,
             velocity: point.direction * tuning.top_speed * RESPAWN_SPEED_SHARE,
+            road: Some(gate),
             heading,
             turbo: self.turbo,
             thrust: tuning.thrust_seconds,
@@ -781,6 +789,7 @@ impl Car {
             position,
             velocity,
             heading,
+            road: Some(gate),
             turbo: self.turbo,
             thrust: tuning.thrust_seconds,
             checkpoint: self.checkpoint,
@@ -846,7 +855,7 @@ impl Car {
         if self.is_airborne() {
             return None;
         }
-        let here = track.project(self.position);
+        let here = track.project_near(self.position, self.road);
         if !track.within_walls(&here) || track.in_gap(here.distance) {
             return None;
         }
@@ -1034,7 +1043,7 @@ impl Car {
         }
         self.reset_button = resetting;
         self.start_dash(input, tuning, track, dt);
-        let before = track.project(self.position);
+        let before = track.project_near(self.position, self.road);
         let was_inside = track.within_walls(&before);
         let height_before = track.height_at(&before);
         let (charge, turbo) = (self.drift_charge, self.turbo);
@@ -1047,8 +1056,8 @@ impl Car {
         // On a slope, gravity pulls downhill. For a body resting on a height field, the horizontal
         // part of that pull is `g × gradient / (1 + |gradient|²)`. It comes before the grip, which
         // then holds against it the way tires would.
+        let surface = track.surface_at(&before);
         if !self.is_airborne() {
-            let surface = track.surface(self.position);
             let pull = tuning.gravity / (1.0 + surface.gradient.length_squared());
             self.velocity -= surface.gradient * pull * dt;
         }
@@ -1059,8 +1068,25 @@ impl Car {
             self.grip(input, tuning, dt);
         }
         self.dash_across(tuning);
-        self.position += self.velocity * dt;
-        let here = track.project(self.position);
+        // On a slope the road is longer than the plane under it: a car on it covers its speed along
+        // the road, which is less of the plane, by the slope along its travel (since v1.0.0-rc10,
+        // when the slopes went up to 40 degrees; until then the plane, 10% too far at 25 degrees).
+        let travel = if self.is_airborne() {
+            1.0
+        } else {
+            let along = surface.gradient.dot(self.velocity.normalize_or_zero());
+            1.0 / (1.0 + along * along).sqrt()
+        };
+        self.position += self.velocity * dt * travel;
+        // The road under the car: the one it follows, on the road; in the air, the highest it is
+        // over and above, where the road crosses itself (docs/tracks.md#crossings), so a car comes
+        // down on a bridge it flies over and under one it flies beneath.
+        let mut here = track.project_near(self.position, Some(before.distance));
+        if self.is_airborne() {
+            let world = height_before + self.altitude;
+            here = track.project_landing(self.position, world, world, Some(before.distance));
+        }
+        self.road = Some(here.distance);
         let inside = track.within_walls(&here);
         let height = track.height_at(&here);
         // How fast the road under the car rose or fell as it moved: a car on it goes up and down
@@ -1521,7 +1547,7 @@ impl Car {
     /// The walls are read where the car is, not from the track as a whole: through a bottleneck
     /// they stand closer in, and the road itself squeezes the car toward the centerline.
     fn collide_with_walls(&mut self, tuning: &CarTuning, track: &Track, dt: f32) -> Option<f32> {
-        let projection = track.project(self.position);
+        let projection = track.project_near(self.position, self.road);
         let limit = track.half_width_at(projection.distance) - tuning.collision_radius;
         let overlap = projection.lateral.abs() - limit;
         if overlap <= 0.0 || track.breached(projection.distance, projection.lateral) {
@@ -1599,7 +1625,7 @@ fn wrap_angle(angle: f32) -> f32 {
 mod tests {
     use super::*;
     use crate::TICK_RATE;
-    use crate::test_support::{banked_oval, open_track, oval, tuning};
+    use crate::test_support::{banked_oval, crossing, open_track, oval, tuning};
     use crate::track::Elevation;
 
     /// A car standing still in the middle of the first banked turn's arc, on the centerline, drifts
@@ -2324,6 +2350,30 @@ mod tests {
         pitch: 0,
         reset: Reset::None,
     };
+
+    /// Where the road crosses itself, a car keeps to the road it follows: under the bridge it
+    /// drives on under it, on the bridge it drives on over it (since v1.0.0-rc10).
+    #[test]
+    fn a_car_keeps_to_its_road_where_the_road_crosses_itself() {
+        let track = Track::build(&crossing(22.0)).unwrap();
+        for (from, until) in [(100.0, 300.0), (620.0, 930.0)] {
+            let point = track.point_at(from);
+            let mut car = Car {
+                road: Some(from),
+                velocity: point.direction * 40.0,
+                ..Car::new(point.position, point.direction.to_angle())
+            };
+            let mut furthest: f32 = from;
+            for _ in 0..(3.0 * TICK_RATE as f32) as usize {
+                car.step(ACCELERATE, &tuning(), &track);
+                let road = car.road.expect("a car on the road knows it");
+                assert!((from..until).contains(&road), "left its road at {road}: {car:?}");
+                assert!(!car.is_falling(), "fell through at {road}");
+                furthest = furthest.max(road);
+            }
+            assert!(furthest > from + 100.0, "{furthest}");
+        }
+    }
 
     fn drifting(steer: f32) -> CarInput {
         CarInput::new(true, steer).with_drift(true)

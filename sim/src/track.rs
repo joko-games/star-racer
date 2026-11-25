@@ -6,8 +6,10 @@
 //! renderer use.
 //!
 //! The road climbs and dives through the heights of its [`Elevation`] profile, and turns can be
-//! banked. It stays a height field over the plane: the simulation still moves cars in two
-//! dimensions, and asks the [`Surface`] for the height and slope under them.
+//! banked. The simulation moves cars in two dimensions, and asks the [`Surface`] for the height and
+//! slope under them; since v1.0.0-rc10 the road may pass over itself, high enough over the road
+//! under it ([`MIN_CLEARANCE`]), each car keeping to the road it follows ([`Track::project_near`]).
+//! It may also change width along the lap ([`Widening`]), and climb or dive at up to 40 degrees.
 
 use std::error::Error;
 use std::fmt;
@@ -44,14 +46,28 @@ const GRID_LATERAL_SHARE: f32 = 0.45;
 /// reasonably drive.
 const MAX_BANKING: f32 = 60.0;
 
-/// Steepest the centerline may climb or dive, in degrees. Cars move on the plane under the road,
-/// which only stays honest while the road is not too steep: at 25 degrees, a car covers 10% more
-/// road than the plane says it does.
-const MAX_GRADE: f32 = 25.0;
+/// Steepest the centerline may climb or dive, in degrees: 25 until v1.0.0-rc10, 40 since, at the
+/// user's word ("Pentes plus fortes"). Cars move on the plane under the road, and a car on a slope
+/// covers less of the plane than its speed, the road being longer than the plane under it
+/// (`Car::step`), so the car runs at its speed along the road however steep.
+pub const MAX_GRADE: f32 = 40.0;
 
 /// How far either side of a point the slope along the road is measured over, in meters: half the
 /// widest spacing of the centerline points, between which heights are interpolated linearly.
 const ALONG_STEP: f32 = 0.5;
+
+/// How high one road must pass over another where they cross, in meters, between their centerlines
+/// (since v1.0.0-rc10, docs/tracks.md#crossings): room for a car hovering on its thruster, which
+/// holds it 10 m up, to fly under the deck without going through it.
+pub const MIN_CLEARANCE: f32 = 14.0;
+
+/// How far beyond the edge of the road a stretch of it is still one a car could be on, in meters
+/// ([`Track::candidates`]): a car knocked or flown off its road is still found on it.
+const CANDIDATE_REACH: f32 = 20.0;
+
+/// How far under a road a car in the air may be and still come down on it, in meters: the road
+/// rises under it in the tick it lands.
+const LANDING_TOLERANCE: f32 = 0.5;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Encode, Decode)]
 #[serde(deny_unknown_fields)]
@@ -65,6 +81,10 @@ pub struct TrackDescription {
     /// any, the road lies flat at height zero.
     #[serde(default)]
     pub elevation: Vec<Elevation>,
+    /// Where the road changes width, in order along the lap (see [`Widening`]): from each, the road
+    /// is that wide until the next. Without any, it is [`TrackDescription::width`] all round.
+    #[serde(default)]
+    pub widths: Vec<Widening>,
     /// Stretches where the road pinches in (see [`Narrows`]).
     #[serde(default)]
     pub narrows: Vec<Narrows>,
@@ -377,6 +397,75 @@ impl HeightProfile {
     }
 }
 
+/// A change of the road's width (since v1.0.0-rc10, the user's word: "Largeur par segment"): from
+/// `at` meters along the lap the road is `width` meters wide, until the next change, the walls
+/// moving out or in along a smoothstep over `blend` meters from `at`. The changes go round the lap:
+/// the last holds past the line until the first. On a track with none, the road is
+/// [`TrackDescription::width`] all round.
+///
+/// Placed by its distance along the lap, as a [`Narrows`] is, so it keeps its place when the road
+/// around it is redrawn; the editor sets one at the start of a segment to give that segment its
+/// width.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize, Encode, Decode)]
+#[serde(deny_unknown_fields)]
+pub struct Widening {
+    /// Meters along the lap from the start line where the new width starts coming in.
+    pub at: f32,
+    /// Width from wall to wall from there, in meters.
+    pub width: f32,
+    /// How far the walls take to move to it, in meters.
+    #[serde(default = "widening_blend")]
+    pub blend: f32,
+}
+
+const fn widening_blend() -> f32 {
+    30.0
+}
+
+/// The narrowest and the widest a road may be, in meters.
+pub const MIN_WIDTH: f32 = 12.0;
+pub const MAX_WIDTH: f32 = 120.0;
+
+impl Widening {
+    fn validate(&self, length: f32) -> Result<(), &'static str> {
+        if !(self.at.is_finite() && (0.0..length).contains(&self.at)) {
+            return Err("the distance along the track must be between zero and its length");
+        }
+        if !(self.width.is_finite() && (MIN_WIDTH..=MAX_WIDTH).contains(&self.width)) {
+            return Err("the width must be between 12 and 120 meters");
+        }
+        if !(self.blend.is_finite() && self.blend >= 0.0 && self.blend < length / 2.0) {
+            return Err("the blend must be zero or a positive number of meters, under half a lap");
+        }
+        Ok(())
+    }
+}
+
+/// The road's width before any narrows, `distance` meters along a lap `length` meters round: the
+/// track's width, or the last [`Widening`] reached, blending in from the one before it.
+fn base_width_at(description: &TrackDescription, length: f32, distance: f32) -> f32 {
+    let widths = &description.widths;
+    if widths.is_empty() {
+        return description.width;
+    }
+    let distance = distance.rem_euclid(length);
+    // The last change at or before `distance`; before the first one, the last of the lap before,
+    // which holds round past the line.
+    let current = widths.partition_point(|change| change.at <= distance);
+    let (index, along) = match current {
+        0 => (widths.len() - 1, distance + length - widths[widths.len() - 1].at),
+        current => (current - 1, distance - widths[current - 1].at),
+    };
+    let change = widths[index];
+    let previous = widths[(index + widths.len() - 1) % widths.len()].width;
+    if change.blend <= 0.0 || along >= change.blend {
+        return change.width;
+    }
+    let share = along / change.blend;
+    let smooth = share * share * (3.0 - 2.0 * share);
+    previous + (change.width - previous) * smooth
+}
+
 /// A stretch where the road pinches in: the bottleneck of a circuit.
 ///
 /// The centerline does not move. The road narrows evenly on both sides, from the full width of the
@@ -485,6 +574,11 @@ pub enum TrackError {
         index: usize,
         reason: &'static str,
     },
+    /// A change of width cannot be placed as written.
+    InvalidWidening {
+        index: usize,
+        reason: &'static str,
+    },
     /// A speed pad cannot be placed as written.
     InvalidPad {
         index: usize,
@@ -510,11 +604,13 @@ pub enum TrackError {
         index: usize,
         reason: &'static str,
     },
-    /// The road runs over itself: at `at` meters from the start line, it is less than a road width
-    /// from the road at `over` meters.
+    /// The road runs over itself without room between the two: at `at` meters from the start line,
+    /// it crosses the road at `over` meters with only `clearance` meters between them, less than
+    /// [`MIN_CLEARANCE`] (a crossing at the same height being a negative or nil clearance).
     Overlaps {
         at: f32,
         over: f32,
+        clearance: f32,
     },
 }
 
@@ -531,6 +627,7 @@ impl fmt::Display for TrackError {
                  steeper than the {MAX_GRADE} a road may"
             ),
             Self::InvalidNarrows { index, reason } => write!(f, "narrows {index}: {reason}"),
+            Self::InvalidWidening { index, reason } => write!(f, "width {index}: {reason}"),
             Self::InvalidPad { index, reason } => write!(f, "pad {index}: {reason}"),
             Self::InvalidGap { index, reason } => write!(f, "gap {index}: {reason}"),
             Self::InvalidBreach { index, reason } => write!(f, "breach {index}: {reason}"),
@@ -547,9 +644,15 @@ impl fmt::Display for TrackError {
                 "the centerline ends {gap:.2} m away from where it starts \
                  (tolerance: {CLOSURE_TOLERANCE} m)"
             ),
-            Self::Overlaps { at, over } => write!(
+            Self::Overlaps {
+                at,
+                over,
+                clearance,
+            } => write!(
                 f,
-                "the road at {at:.0} m from the start line runs over the road at {over:.0} m"
+                "the road at {at:.0} m from the start line crosses the road at {over:.0} m with \
+                 {clearance:.1} m between them: one must pass at least {MIN_CLEARANCE} m over the \
+                 other"
             ),
         }
     }
@@ -619,9 +722,23 @@ impl Track {
     pub fn build(description: &TrackDescription) -> Result<Self, TrackError> {
         let profile = CurvatureProfile::new(description)?;
         let length = profile.length();
+        for (index, widening) in description.widths.iter().enumerate() {
+            let invalid = |reason| TrackError::InvalidWidening { index, reason };
+            widening.validate(length as f32).map_err(invalid)?;
+            if index > 0 && widening.at <= description.widths[index - 1].at {
+                return Err(invalid(
+                    "the widths must be in order along the lap, each further along than the one \n                     before",
+                ));
+            }
+        }
+        let widest = description
+            .widths
+            .iter()
+            .map(|widening| widening.width)
+            .fold(description.width, f32::max);
         for (index, narrows) in description.narrows.iter().enumerate() {
             narrows
-                .validate(length as f32, description.width)
+                .validate(length as f32, widest)
                 .map_err(|reason| TrackError::InvalidNarrows { index, reason })?;
         }
         let heights = HeightProfile::new(&description.elevation, length)?;
@@ -669,9 +786,12 @@ impl Track {
         if grade > MAX_GRADE {
             return Err(TrackError::TooSteep { at, grade });
         }
-        let centerline: Vec<Vec2> = points.iter().map(|point| point.position).collect();
-        if let Some((at, over)) = find_overlap(&centerline, spacing as f32, description.width) {
-            return Err(TrackError::Overlaps { at, over });
+        if let Some((at, over, clearance)) = find_overlap(&points, spacing as f32) {
+            return Err(TrackError::Overlaps {
+                at,
+                over,
+                clearance,
+            });
         }
         for (index, pad) in description.pads.iter().enumerate() {
             let half_width = width_at(description, length as f32, pad.at) / 2.0;
@@ -740,7 +860,10 @@ impl Track {
 
         Ok(Self {
             name: description.name.clone(),
-            half_width: description.width / 2.0,
+            half_width: points
+                .iter()
+                .map(|point| point.half_width)
+                .fold(0.0, f32::max),
             narrowest_half_width,
             length: length as f32,
             spacing: spacing as f32,
@@ -899,6 +1022,12 @@ impl Track {
         self.surface_at(&self.project(position))
     }
 
+    /// The surface under a car at `position` following the road `road` meters along the lap (see
+    /// [`Track::project_near`]): where the road crosses itself, the one it is on.
+    pub fn surface_near(&self, position: Vec2, road: Option<f32>) -> Surface {
+        self.surface_at(&self.project_near(position, road))
+    }
+
     /// The surface at an already computed projection, to avoid projecting twice.
     pub fn surface_at(&self, projection: &TrackProjection) -> Surface {
         let (distance, lateral) = (projection.distance, projection.lateral);
@@ -957,8 +1086,94 @@ impl Track {
             .min_by(|x, y| x.2.total_cmp(&y.2))
             .map(|(index, t, _)| (index, t))
             .expect("a track always has points");
+        self.projection_on(index, t, position)
+    }
 
-        let (a, b) = segment(index);
+    /// Where `position` lies relative to the part of the road a car there follows: the one near
+    /// `road` meters along the lap, when the car knows where it is, else the nearest (since
+    /// v1.0.0-rc10, when the road may pass over itself; docs/tracks.md#crossings).
+    ///
+    /// Every stretch of road near enough to `position` to be the one under a car is a candidate
+    /// ([`Track::candidates`]); the one nearest `road` along the lap is taken, so a car driving
+    /// under a bridge stays on its road, whatever runs over it.
+    pub fn project_near(&self, position: Vec2, road: Option<f32>) -> TrackProjection {
+        let Some(road) = road else {
+            return self.project(position);
+        };
+        self.candidates(position)
+            .into_iter()
+            .min_by(|a, b| {
+                let along = |projection: &TrackProjection| {
+                    wrapped_gap(projection.distance - road, self.length)
+                };
+                along(a).total_cmp(&along(b))
+            })
+            .unwrap_or_else(|| self.project(position))
+    }
+
+    /// The road a car in the air at `position`, `height` meters above the ground, comes down on:
+    /// the highest stretch under it that it is over, between its walls, as long as the car was
+    /// above it a moment before (`before`, its height then), so a car rising under a bridge does
+    /// not go through the deck. Over none, the road it was following (`road`).
+    pub fn project_landing(
+        &self,
+        position: Vec2,
+        height: f32,
+        before: f32,
+        road: Option<f32>,
+    ) -> TrackProjection {
+        let ceiling = height.min(before) + LANDING_TOLERANCE;
+        self.candidates(position)
+            .into_iter()
+            .filter(|projection| self.within_walls(projection))
+            .map(|projection| (self.height_at(&projection), projection))
+            .filter(|(surface, _)| *surface <= ceiling)
+            .max_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, projection)| projection)
+            .unwrap_or_else(|| self.project_near(position, road))
+    }
+
+    /// Every stretch of road a car at `position` could be on: the nearest point of each part of the
+    /// centerline that comes within [`CANDIDATE_REACH`] of the road's edge, and the nearest point
+    /// of all. One on a road that never passes near itself; two or more where it crosses itself or
+    /// doubles back close by.
+    pub fn candidates(&self, position: Vec2) -> Vec<TrackProjection> {
+        let count = self.points.len();
+        let squared: Vec<(f32, f32)> = (0..count)
+            .map(|index| {
+                let (a, b) = (
+                    self.points[index].position,
+                    self.points[(index + 1) % count].position,
+                );
+                let t = segment_parameter(position, a, b);
+                (position.distance_squared(a.lerp(b, t)), t)
+            })
+            .collect();
+        let nearest = (0..count)
+            .min_by(|&a, &b| squared[a].0.total_cmp(&squared[b].0))
+            .expect("a track always has points");
+        let mut out = Vec::with_capacity(2);
+        for index in 0..count {
+            let here = squared[index].0;
+            let before = squared[(index + count - 1) % count].0;
+            let after = squared[(index + 1) % count].0;
+            let local = here <= before && here < after;
+            let reach = self.points[index].half_width + CANDIDATE_REACH;
+            if index == nearest || (local && here <= reach * reach) {
+                out.push(self.projection_on(index, squared[index].1, position));
+            }
+        }
+        out
+    }
+
+    /// The projection of `position` on the centerline piece from point `index` to the next, `t`
+    /// of the way along it.
+    fn projection_on(&self, index: usize, t: f32, position: Vec2) -> TrackProjection {
+        let count = self.points.len();
+        let (a, b) = (
+            self.points[index].position,
+            self.points[(index + 1) % count].position,
+        );
         let closest = a.lerp(b, t);
         let offset = position - closest;
         let side = if offset.dot((b - a).perp()) < 0.0 {
@@ -975,8 +1190,13 @@ impl Track {
 
     /// Position and heading of a starting grid slot. Any slot index works, further ones are further
     /// back.
+    /// Meters along the lap of a starting grid slot: behind the line, so most of a lap round.
+    pub fn grid_distance(&self, slot: usize) -> f32 {
+        (-(GRID_FIRST_SLOT + slot as f32 * GRID_SLOT_SPACING)).rem_euclid(self.length)
+    }
+
     pub fn grid_slot(&self, slot: usize) -> (Vec2, f32) {
-        let point = self.point_at(-(GRID_FIRST_SLOT + slot as f32 * GRID_SLOT_SPACING));
+        let point = self.point_at(self.grid_distance(slot));
         let side = if slot % 2 == 0 { 1.0 } else { -1.0 };
         let lateral = side * GRID_LATERAL_SHARE * point.half_width;
         (
@@ -986,14 +1206,15 @@ impl Track {
     }
 }
 
-/// The width of the road `distance` meters along a track `length` meters round: the width of the
-/// track, pinched in by whichever narrows reaches furthest in here.
+/// The width of the road `distance` meters along a track `length` meters round: its width there
+/// ([`base_width_at`]), pinched in by whichever narrows reaches furthest in here.
 fn width_at(description: &TrackDescription, length: f32, distance: f32) -> f32 {
+    let base = base_width_at(description, length, distance);
     description
         .narrows
         .iter()
-        .fold(description.width, |width, narrows| {
-            width.min(narrows.width_at(distance, length, description.width))
+        .fold(base, |width, narrows| {
+            width.min(narrows.width_at(distance, length, base))
         })
 }
 
@@ -1011,24 +1232,42 @@ fn steepest_grade(points: &[TrackPoint], spacing: f32) -> (f32, f32) {
     (index as f32 * spacing, (rise / spacing).atan().to_degrees())
 }
 
-/// Where a closed centerline of evenly spaced `positions` brings its road over itself: two points
-/// less than a road width apart, although far enough apart along the loop that no allowed turn
-/// brings them that close. Returns their distances along the loop.
+/// Where a closed centerline of evenly spaced `points` brings its road over itself without room
+/// between the two: two points nearer than their half widths together, although far enough apart
+/// along the loop that no allowed turn brings them that close, and with less than
+/// [`MIN_CLEARANCE`] between the top of the lower road (its raised edge, where it is banked) and
+/// the higher one. Returns their distances along the loop and the clearance there.
 ///
 /// The tightest turn allowed has a radius of half the width, and half a turn of it, `π × width / 2`
 /// long, brings the centerline back exactly a width apart. Tighter spots cannot be turns.
-fn find_overlap(positions: &[Vec2], spacing: f32, width: f32) -> Option<(f32, f32)> {
-    let length = positions.len() as f32 * spacing;
-    let far_along = std::f32::consts::FRAC_PI_2 * width;
-    for (i, a) in positions.iter().enumerate() {
-        for (j, b) in positions.iter().enumerate().skip(i + 1) {
+fn find_overlap(points: &[TrackPoint], spacing: f32) -> Option<(f32, f32, f32)> {
+    let length = points.len() as f32 * spacing;
+    let widest = points.iter().map(|point| point.half_width).fold(0.0, f32::max);
+    let far_along = std::f32::consts::PI * widest;
+    for (i, a) in points.iter().enumerate() {
+        for (j, b) in points.iter().enumerate().skip(i + 1) {
             let along = (j - i) as f32 * spacing;
-            if along.min(length - along) > far_along && a.distance(*b) < width {
-                return Some((i as f32 * spacing, j as f32 * spacing));
+            let reach = a.half_width + b.half_width;
+            if along.min(length - along) <= far_along
+                || a.position.distance_squared(b.position) >= reach * reach
+            {
+                continue;
+            }
+            let (low, high) = if a.height <= b.height { (a, b) } else { (b, a) };
+            let clearance = high.height - (low.height + low.half_width * low.bank.abs());
+            if clearance < MIN_CLEARANCE {
+                return Some((i as f32 * spacing, j as f32 * spacing, clearance));
             }
         }
     }
     None
+}
+
+/// How far apart two places `delta` meters apart along a loop `length` meters round are, whichever
+/// way round is shorter.
+fn wrapped_gap(delta: f32, length: f32) -> f32 {
+    let delta = delta.rem_euclid(length);
+    delta.min(length - delta)
 }
 
 /// Parameter in `[0, 1]` of the point of segment `ab` closest to `position`.
@@ -1252,7 +1491,7 @@ mod tests {
     use std::f32::consts::PI;
 
     use super::*;
-    use crate::test_support::{banked_oval, oval};
+    use crate::test_support::{banked_oval, crossing, oval};
 
     /// A gap must keep clear of the start line, and a checkpoint clear of the gaps and in order.
     #[test]
@@ -1684,20 +1923,89 @@ mod tests {
         ));
     }
 
+    /// A road may cross itself on a bridge, high enough over the road under it, and not at the same
+    /// level (since v1.0.0-rc10).
+    #[test]
+    fn a_road_crosses_itself_on_a_bridge() {
+        assert!(matches!(
+            Track::build(&crossing(0.0)),
+            Err(TrackError::Overlaps { .. })
+        ));
+        assert!(matches!(
+            Track::build(&crossing(MIN_CLEARANCE - 4.0)),
+            Err(TrackError::Overlaps { .. })
+        ));
+        let track = Track::build(&crossing(22.0)).expect("a bridge 22 m over the road");
+        // Where the two cross, each road is found from a car following it, and a car in the air
+        // comes down on the one it is over and above.
+        let under = track.point_at(155.0).position;
+        let low = track.project_near(under, Some(150.0));
+        let high = track.project_near(under, Some(670.0));
+        assert!((low.distance - 155.0).abs() < 5.0, "{low:?}");
+        assert!((high.distance - 680.0).abs() < 15.0, "{high:?}");
+        assert!(track.height_at(&high) - track.height_at(&low) > MIN_CLEARANCE);
+        let landing = |height: f32, road: f32| track.project_landing(under, height, height, Some(road));
+        assert!((landing(30.0, 150.0).distance - high.distance).abs() < 1.0);
+        assert!((landing(10.0, 670.0).distance - low.distance).abs() < 1.0);
+    }
+
+    /// A width per stretch: the road widens and narrows where the changes say, smoothly, and the
+    /// changes go round the lap.
+    #[test]
+    fn the_road_takes_the_widths_it_is_given() {
+        let mut description = oval(200.0, 60.0, 20.0);
+        description.widths = vec![
+            Widening {
+                at: 50.0,
+                width: 40.0,
+                blend: 20.0,
+            },
+            Widening {
+                at: 300.0,
+                width: 14.0,
+                blend: 30.0,
+            },
+        ];
+        let track = Track::build(&description).unwrap();
+        let width = |at: f32| 2.0 * track.half_width_at(at);
+        assert!((width(100.0) - 40.0).abs() < 0.1, "{}", width(100.0));
+        assert!((width(400.0) - 14.0).abs() < 0.1, "{}", width(400.0));
+        // Past the line, the last width holds round to the first change.
+        assert!((width(10.0) - 14.0).abs() < 0.1, "{}", width(10.0));
+        let halfway = width(60.0);
+        assert!(halfway > 14.5 && halfway < 39.5, "{halfway}");
+        assert!((track.half_width() - 20.0).abs() < 0.1);
+        description.widths[1].at = 40.0;
+        assert!(matches!(
+            Track::build(&description),
+            Err(TrackError::InvalidWidening { index: 1, .. })
+        ));
+    }
+
     #[test]
     fn a_road_running_over_itself_is_found() {
-        // A hairpin: out along y = 0, back along y = 12, a road 16 m wide.
-        let out = (0..50).map(|x| Vec2::new(x as f32, 0.0));
-        let turn = (0..19).map(|step| {
-            let angle = -std::f32::consts::FRAC_PI_2 + step as f32 / 6.0;
-            Vec2::new(50.0, 6.0) + Vec2::from_angle(angle) * 6.0
-        });
-        let back = (0..50).rev().map(|x| Vec2::new(x as f32, 12.0));
-        let positions: Vec<Vec2> = out.chain(turn).chain(back).collect();
+        // Two straight roads 16 m wide crossing square, far apart along the loop: the second at
+        // `height` over the first.
+        let point = |position: Vec2, height: f32| TrackPoint {
+            position,
+            direction: Vec2::X,
+            curvature: 0.0,
+            height,
+            bank: 0.0,
+            half_width: 8.0,
+        };
+        let crossing = |height: f32| -> Vec<TrackPoint> {
+            let first = (0..100).map(|x| point(Vec2::new(x as f32, 0.0), 0.0));
+            let second = (0..100).map(move |y| point(Vec2::new(50.0, y as f32 - 50.0), height));
+            first.chain(second).collect()
+        };
 
-        let (at, over) = find_overlap(&positions, 1.0, 16.0).expect("the rows are 12 m apart");
+        let (at, over, clearance) = find_overlap(&crossing(0.0), 1.0).expect("a level crossing");
         assert!(at < over, "{at} {over}");
-        assert_eq!(find_overlap(&positions, 1.0, 11.0), None);
+        assert!(clearance < MIN_CLEARANCE, "{clearance}");
+        // The second raised over the first, high enough: a bridge, not an overlap.
+        assert_eq!(find_overlap(&crossing(MIN_CLEARANCE + 1.0), 1.0), None);
+        assert!(find_overlap(&crossing(MIN_CLEARANCE - 1.0), 1.0).is_some());
     }
 
     #[test]

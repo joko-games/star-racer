@@ -1,7 +1,7 @@
 //! Fixtures for the simulation tests.
 
 use super::car::CarTuning;
-use super::track::{Segment, TrackDescription};
+use super::track::{Elevation, Segment, TrackDescription};
 
 /// A counter-clockwise oval of width 16 m. The start line is in the middle of a straight, so
 /// `straight` is split around it.
@@ -48,6 +48,7 @@ fn oval_of_width(
             },
         ],
         elevation: Vec::new(),
+        widths: Vec::new(),
         narrows: Vec::new(),
         scenery: Vec::new(),
         pads: Vec::new(),
@@ -128,3 +129,35 @@ pub fn tuning() -> CarTuning {
         wall_alignment: 60.0,
     }
 }
+
+/// A circuit that crosses itself (since v1.0.0-rc10, docs/tracks.md#crossings): 300 m east, a
+/// left turn of 225 degrees, and 400 m south-west, which runs across the first straight about
+/// 155 m from the line and 680 m round the lap; then the shortest way back to the line. The
+/// diagonal stands `raised` meters over the straight where they cross.
+pub fn crossing(raised: f32) -> TrackDescription {
+    let mut description = TrackDescription {
+        name: "Crossing".into(),
+        segments: vec![
+            Segment::Straight { length: 300.0 },
+            Segment::Turn {
+                angle: 225.0,
+                radius: 60.0,
+                transition: 0.0,
+                banking: 0.0,
+            },
+            Segment::Straight { length: 400.0 },
+        ],
+        ..oval(100.0, 40.0, 0.0)
+    };
+    let closing = crate::track::editing::closing(&description, 60.0).expect("it closes");
+    description.segments.extend(closing);
+    description.elevation = vec![
+        Elevation { at: 0.0, height: 0.0 },
+        Elevation { at: 220.0, height: 0.0 },
+        Elevation { at: 560.0, height: raised },
+        Elevation { at: 800.0, height: raised },
+        Elevation { at: 1150.0, height: 0.0 },
+    ];
+    description
+}
+

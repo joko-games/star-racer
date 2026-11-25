@@ -238,7 +238,7 @@ fn shed_rings(
 /// Where a car's rings start: on the road under it, or just under its hull in the air, and the
 /// road's up there.
 fn under(car: &Car, track: &star_racer_sim::track::Track) -> (Vec3, Vec3) {
-    let surface = track.surface(car.position);
+    let surface = track.surface_near(car.position, car.road);
     let up = world::rotation_on_surface(car.heading, surface.gradient) * Vec3::Y;
     let at = world::position(car.position, surface.height) + up * (car.altitude.max(0.0) + 0.08);
     (at, up)

@@ -175,6 +175,7 @@ mod tests {
                 Segment::Straight { length: 50.0 },
             ],
             elevation: Vec::new(),
+            widths: Vec::new(),
             narrows,
             scenery: Vec::new(),
             pads: Vec::new(),

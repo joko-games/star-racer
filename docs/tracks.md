@@ -285,13 +285,70 @@ on the inside of a turn than on the outside, by the ratio of the two radii, so t
 that climbs is steeper than its centerline: on the skyway, the dive is 14 degrees at its steepest
 on the centerline and 16 at its inner edge.
 
-The centerline may be no steeper than 25 degrees. Cars move on the plane under the road (see
-[Simulation](simulation.md#slopes)), which only stays honest while the road is not too steep: at
-25 degrees a car covers 10% more road than the plane says it does.
+The centerline may be no steeper than 40 degrees (25 until v1.0.0-rc10, at the user's word "Pentes
+plus fortes"). Cars move on the plane under the road (see [Simulation](simulation.md#slopes)), and
+since v1.0.0-rc10 a car on a slope covers less of the plane than its speed, the road being longer
+than the plane under it, so it runs at its speed along the road however steep; until then it ran
+its speed across the plane, 10% too far up a slope of 25 degrees, which is why slopes were held
+there.
 
-The track stays a height field, one height over each point of the plane: the road can climb over a
-hill but never over itself. A bridge, a loop or a wall ride would need the simulation to move cars
-along the road rather than over the plane under it, which it does not do.
+## Crossings
+
+Since v1.0.0-rc10, at the user's word ("Il faut que ce soit + permissif pour les niveaux"), the
+road may pass over itself: a bridge, an interchange, a figure of eight with one leg raised. Until
+then the track was a height field, one height over each point of the plane, and a circuit whose
+road came back over itself was refused.
+
+- **Where it may.** Two stretches of road closer than their half widths together, and far enough
+  apart along the lap that no turn brings them that close, must stand at least `MIN_CLEARANCE`
+  (14 m) apart in height, from the top of the lower one (its raised edge, where it is banked) to
+  the higher one's centerline: room for a car hovering on its thruster, 10 m up, to fly under the
+  deck without going through it. Closer, the circuit is refused, saying where and by how much
+  (`TrackError::Overlaps`). A level crossing is not allowed.
+- **Which road a car is on.** A car remembers the road it follows, as meters along the lap
+  (`Car::road`, protocol 48). Every stretch of road near enough to be under it is a candidate
+  (`Track::candidates`); on the road, the car keeps to the one nearest its own along the lap
+  (`Track::project_near`), so it drives on under a bridge, or over it, whatever crosses. In the
+  air it comes down on the highest stretch it is over and above, and was above a moment before
+  (`Track::project_landing`): flown over a bridge, it lands on it; risen under one, it does not go
+  through the deck. Race progress, the autopilot, the walls, the dash, and on the client the car's
+  height, its trail, its rings, its nameplate and the chase camera all follow the car's road. A car
+  that does not know its road yet (one placed by hand) takes the nearest, as every car did before.
+- **Drawn.** The road and its walls are drawn as they are; the deck casts its shadow on the road
+  under it. No pier stands on another stretch of road: the bridge spans it (`over_another_road` in
+  `client/src/track/piers.rs`). The chase camera treats a bridge over the road as a tunnel's roof,
+  and stays under its deck.
+
+Verified: a circuit crossing itself refused at the same level and 4 m short of the clearance,
+built 22 m up; the projection finding each road where they cross; a car driven under the bridge
+and one over it each keeping to its road for three seconds; and captures of the autopilot racing
+a scratch circuit of that shape, passing under the bridge, the deck's shadow on the road, its piers
+beside it.
+
+## Widths
+
+Since v1.0.0-rc10, at the user's word ("Largeur par segment"), the road may change width along the
+lap: a `widths` list of changes, each the width the road has from there until the next. The
+changes go round the lap, the last one holding past the line until the first; on a track with none
+the road is `width` all round, as before. The editor gives a segment its width by putting a change
+at its start.
+
+```ron
+widths: [
+    (at: 0.0, width: 30.0),
+    (at: 820.0, width: 48.0, blend: 40.0),
+    (at: 1300.0, width: 22.0),
+],
+```
+
+- `at`: meters along the lap where the new width starts coming in, in order along the lap.
+- `width`: from wall to wall, 12 to 120 m.
+- `blend`: how far the walls take to move out or in, along the same smoothstep as a bottleneck,
+  30 m by default.
+
+A bottleneck pinches whatever width the road has where it stands. The widest the road gets is the
+track's `half_width` (what the camera and the tests take as the road's reach); a bottleneck may be
+no wider than it.
 
 ## Bottlenecks
 
@@ -578,10 +635,13 @@ slabs out in the dark.
 - a banking is outside 0 to 60 degrees, or a banked turn has no transition;
 - the angles do not add up to one full turn, left or right;
 - the centerline does not come back within 0.5 m of the start line;
-- the road runs over itself: two centerline points less than a road width apart, although further
-  apart along the loop than `π × width / 2`. The tightest turn allowed has a radius of half the
-  width, and half a turn of it is that long and brings the centerline back exactly a width apart,
-  so closer points are not a turn but another part of the road;
+- the road runs over itself without room: two centerline points closer than their half widths
+  together, although further apart along the loop than `π` times the widest half width (the
+  tightest turn allowed has a radius of half the width, and half a turn of it brings the centerline
+  back exactly a width apart, so closer points are not a turn but another part of the road), with
+  less than 14 m between them in height ([Crossings](#crossings));
+- a change of width is off the lap, outside 12 to 120 m, has a blend under zero or over half a
+  lap, or comes no further along the lap than the one before it ([Widths](#widths));
 - a height of the relief sits off the lap, is not a number, or comes no further along the lap than
   the one before it. The message names it by its place in the list;
 - the centerline climbs or dives anywhere at more than 25 degrees;

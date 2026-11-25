@@ -383,9 +383,11 @@ mod tests {
                         // drifting lap gets a small budget instead of none: a slide worth having
                         // runs wide, and a bottleneck is drawn to leave it little room. A graze
                         // of a few hundredths of a second is not a circuit that cannot be driven;
-                        // a lap spent against the wall is, and that is what this still catches.
+                        // a lap spent against the wall is, and that is what this still catches. Five
+                        // ticks since v1.0.0-rc10, when a car on a slope began running at its
+                        // speed along the road: the drifting lap of Cascade's mountain grazed 4.
                         if style == Style::Drift {
-                            assert!(report.wall_ticks <= 3, "{context}: {report:?}");
+                            assert!(report.wall_ticks <= 5, "{context}: {report:?}");
                         }
                         lap_times.push(lap_time);
                     } else {

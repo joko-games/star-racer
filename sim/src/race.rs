@@ -56,7 +56,11 @@ impl Progress {
     /// Starts counting at `position`. A car within half a lap behind the start line, like a car on
     /// the grid, starts below zero.
     pub fn new(track: &Track, position: Vec2) -> Self {
-        let distance = track.project(position).distance;
+        Self::starting_at(track, track.project(position).distance)
+    }
+
+    /// Starts counting `distance` meters along the lap.
+    fn starting_at(track: &Track, distance: f32) -> Self {
         let total = if distance > track.length() / 2.0 {
             distance - track.length()
         } else {
@@ -71,15 +75,16 @@ impl Progress {
 
     /// Starts counting where `car` stands.
     pub fn of(track: &Track, car: &Car) -> Self {
+        let distance = track.project_near(car.position, car.road).distance;
         Self {
             respawns: car.respawns,
-            ..Self::new(track, car.position)
+            ..Self::starting_at(track, distance)
         }
     }
 
     pub fn update(&mut self, track: &Track, car: &Car) {
         let length = track.length();
-        let distance = track.project(car.position).distance;
+        let distance = track.project_near(car.position, car.road).distance;
         if car.respawns != self.respawns {
             // Brought back to the last gate it passed: its progress goes back to where that gate
             // was, which is behind it by less than a lap.

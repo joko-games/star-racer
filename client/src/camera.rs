@@ -25,7 +25,7 @@ use star_racer_sim::track::Track;
 use crate::lobby::CurrentLobby;
 use crate::race::{RaceUpdate, RaceView, shortest_angle};
 use crate::screen::Screen;
-use crate::track::{CurrentTrack, Roofs, WALL_THICKNESS};
+use crate::track::{CurrentTrack, Roofs, SLAB, WALL_THICKNESS};
 use crate::weight::{FollowedPush, Oscillator, Push, Spring, sway};
 use crate::world;
 
@@ -295,6 +295,7 @@ fn follow_car(
     let ground = Ground {
         track: track.as_deref(),
         roofs: roofs.as_deref(),
+        road: car.road,
     };
     // In the air the camera rises after the car, though not quite as high, so a jump is seen as
     // the car lifting off the road rather than the road dropping away.
@@ -302,7 +303,7 @@ fn follow_car(
     // way, up or down, to wherever it lands or is lost.
     let off_road = track
         .as_deref()
-        .is_some_and(|track| !track.within_walls(&track.project(car.position)));
+        .is_some_and(|track| !track.within_walls(&track.project_near(car.position, car.road)));
     let followed = if off_road {
         car.altitude
     } else {
@@ -484,6 +485,9 @@ fn along_the_road(heading: f32, grade: f32) -> Vec3 {
 struct Ground<'a> {
     track: Option<&'a Track>,
     roofs: Option<&'a Roofs>,
+    /// The road the followed car is on (`Car::road`): where the road crosses itself, the one the
+    /// camera keeps over, the other being a roof if it passes over it.
+    road: Option<f32>,
 }
 
 impl Ground<'_> {
@@ -494,9 +498,19 @@ impl Ground<'_> {
         let Some(track) = self.track else {
             return eye;
         };
-        let projection = track.project(Vec2::new(eye.x, -eye.z));
+        let plane = Vec2::new(eye.x, -eye.z);
+        let projection = track.project_near(plane, self.road);
         let road = track.surface_at(&projection).height;
         let mut height = eye.y.max(road + ROAD_CLEARANCE);
+        // A bridge over the road is a roof: a shot under it stays under its deck (since
+        // v1.0.0-rc10, docs/tracks.md#crossings).
+        for other in track.candidates(plane) {
+            let deck = track.surface_at(&other).height - SLAB;
+            let over = other.lateral.abs() <= track.half_width_at(other.distance) + WALL_THICKNESS;
+            if over && deck > road + ROAD_CLEARANCE + ROOF_CLEARANCE {
+                height = height.min(deck - ROOF_CLEARANCE);
+            }
+        }
         let covered = projection.lateral.abs()
             <= track.half_width_at(projection.distance) + WALL_THICKNESS;
         if covered
@@ -514,7 +528,7 @@ impl Ground<'_> {
 /// and away. Read from the track rather than from the car, or a turn would put the post behind a
 /// wall, or on the road itself.
 fn track_side(track: &Track, car: &Car, left: bool) -> Vec3 {
-    let here = track.project(car.position);
+    let here = track.project_near(car.position, car.road);
     let ahead = track.point_at(here.distance + TRACK_SIDE_AHEAD);
     let side = if left { 1.0 } else { -1.0 };
     let lateral = side * (ahead.half_width + WALL_THICKNESS / 2.0);
@@ -528,7 +542,7 @@ fn track_side(track: &Track, car: &Car, left: bool) -> Vec3 {
 /// into a wall, or under the raised edge of a banked turn, whenever the car runs close to one. It
 /// takes the roomier side when the car hugs the side it was meant to film from.
 fn beside_over_the_road(track: &Track, car: &Car, left: bool, elapsed: f32) -> Vec3 {
-    let here = track.project(car.position);
+    let here = track.project_near(car.position, car.road);
     let room = track.half_width_at(here.distance) - BESIDE_EDGE;
     let preferred = if left { 1.0 } else { -1.0 };
     let side = if here.lateral * preferred > room - BESIDE_OUT {
@@ -671,6 +685,7 @@ mod tests {
                 Segment::Straight { length: 30.0 },
             ],
             elevation,
+            widths: Vec::new(),
             narrows: Vec::new(),
             scenery: Vec::new(),
             pads: Vec::new(),
@@ -710,6 +725,7 @@ mod tests {
         let ground = Ground {
             track: Some(&track),
             roofs: None,
+            road: None,
         };
         let under = world::position(point.position, road - 2.0);
         let lifted = ground.frame(under);
@@ -734,6 +750,7 @@ mod tests {
         let ground = Ground {
             track: Some(&track),
             roofs: Some(&roofs),
+            road: None,
         };
         let high = |at: f32, lateral: f32| {
             let point = track.point_at(at);

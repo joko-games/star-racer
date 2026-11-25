@@ -245,7 +245,7 @@ pub(crate) fn sway(
         // own climb, so landing stops it falling all at once and the body sinks onto its springs.
         let gradient = track
             .as_ref()
-            .map_or(Vec2::ZERO, |track| track.0.surface(car.position).gradient);
+            .map_or(Vec2::ZERO, |track| track.0.surface_near(car.position, car.road).gradient);
         let vertical = if car.is_airborne() {
             car.climb
         } else {

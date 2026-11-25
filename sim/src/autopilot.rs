@@ -160,7 +160,7 @@ const JUMP_LEAD: f32 = 0.2;
 /// held across the gap, so the thruster, lit at the top of the hop, carries it over whatever the
 /// gap's length.
 fn jumps(car: &Car, track: &Track) -> bool {
-    let here = track.project(car.position).distance;
+    let here = track.project_near(car.position, car.road).distance;
     let speed = car.velocity.length().max(1.0);
     let lead = speed * JUMP_LEAD + 1.0;
     let length = track.length();
@@ -180,7 +180,7 @@ fn jumps(car: &Car, track: &Track) -> bool {
 /// lock, beyond 1, when that is not enough. A drift steers its travel with the same stick as a
 /// gripping car steers its nose, on a radius of the same kind, so the one pursuit drives both.
 fn pursue(personality: &Personality, car: &Car, track: &Track, look_ahead_time: f32) -> f32 {
-    let here = track.project(car.position);
+    let here = track.project_near(car.position, car.road);
     let look_ahead =
         (LOOK_AHEAD_DISTANCE + car.velocity.length() * look_ahead_time) * personality.look_ahead;
     let ahead = here.distance + look_ahead;
@@ -229,7 +229,7 @@ fn fires_turbo(personality: &Personality, car: &Car, track: &Track) -> bool {
     if car.turbo < 1.0 || car.turbo_button || car.is_boosting() || car.is_drifting() {
         return false;
     }
-    let here = track.project(car.position).distance;
+    let here = track.project_near(car.position, car.road).distance;
     let now = track.point_at(here).direction;
     (1..=TURBO_LOOK_AHEAD_STEPS).all(|step| {
         let ahead = track.point_at(here + step as f32 * TURBO_LOOK_AHEAD_STEP);
@@ -288,7 +288,7 @@ const GAP_STRAIGHT: f32 = 150.0;
 
 /// Whether a gap's lip lies less than `meters` ahead of the car along the road.
 fn gap_within(car: &Car, track: &Track, meters: f32) -> bool {
-    let here = track.project(car.position).distance;
+    let here = track.project_near(car.position, car.road).distance;
     track
         .gaps()
         .iter()
@@ -298,7 +298,7 @@ fn gap_within(car: &Car, track: &Track, meters: f32) -> bool {
 /// How much the centerline turns over the next [`DRIFT_LOOK_AHEAD`] meters, in radians, positive
 /// to the left.
 fn turn_ahead(car: &Car, track: &Track) -> f32 {
-    let here = track.project(car.position).distance;
+    let here = track.project_near(car.position, car.road).distance;
     let now = track.point_at(here).direction;
     let ahead = track.point_at(here + DRIFT_LOOK_AHEAD).direction;
     now.angle_to(ahead)
@@ -375,7 +375,7 @@ pub fn drive_lap_as(
         report.turbos += u32::from(car.turbo_boost > 0.0 && !firing);
         seen.pop_front();
         seen.push_back(car);
-        let projection = track.project(car.position);
+        let projection = track.project_near(car.position, car.road);
         report.falls = u32::from(car.respawns);
         progress.update(track, &car);
 
@@ -507,7 +507,7 @@ drift: {drift:?}"
                 let input = drive_in_style_as(Style::Grip, &personality, &car, &track);
                 car.step(input, &tuning(), &track);
             }
-            laterals.push(track.project(car.position).lateral);
+            laterals.push(track.project_near(car.position, car.road).lateral);
         }
         let spread = laterals.iter().cloned().fold(f32::MIN, f32::max)
             - laterals.iter().cloned().fold(f32::MAX, f32::min);

@@ -570,6 +570,7 @@ mod tests {
                 at: 0.0,
                 height: 20.0,
             }],
+            widths: Vec::new(),
             narrows: Vec::new(),
             scenery: Vec::new(),
             pads: Vec::new(),

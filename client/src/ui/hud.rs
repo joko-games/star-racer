@@ -1615,7 +1615,7 @@ fn update_nameplates(
         if Some(snapshot.id) == followed {
             continue;
         }
-        let height = track.0.surface(snapshot.car.position).height;
+        let height = track.0.surface_near(snapshot.car.position, snapshot.car.road).height;
         let above = world::position(snapshot.car.position, height + 2.3);
         if camera_transform.translation().distance(above) > NAMEPLATE_DISTANCE {
             continue;

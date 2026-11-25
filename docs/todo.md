@@ -60,6 +60,13 @@ the French will go through (`client/src/i18n.rs`, only QUICK PLAY translated yet
      very simple yet fair: done in v1.0.0-rc7, six levels (docs/graphics.md#shapes), to be judged
      by the user, above all ULTRA's cars and VERY LOW's dark city.
 
+5. **More freedom for the circuits, and the editor again** (the user's word on 2026-11-25: "Il faut
+   que ce soit + permissif pour les niveaux, et le l'éditeur, que tu commences maintenant"; asked,
+   they chose the editor in the game, crossings, a width per segment and steeper slopes first, and
+   a first editor that lays, tries and saves locally, publishing waiting for the accounts on the
+   site): the circuits done in v1.0.0-rc10 (docs/tracks.md#crossings, #widths, the slopes to 40
+   degrees); the editor next.
+
 Also waiting:
 
 - The small sound bug on the web, which the user is to describe.

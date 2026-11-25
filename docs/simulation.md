@@ -974,6 +974,19 @@ Only the planar motion is simulated, and that pull is all the slopes do on the r
 flat out does not throw a car into the air. A car leaves the road only by jumping or off a lip,
 and then carries the road's own climb with it (see [Natural flight](#natural-flight)).
 
+Since v1.0.0-rc10, when the slopes allowed went from 25 to 40 degrees, a car on the road covers
+its speed along the road rather than across the plane: it moves `1 / sqrt(1 + s²)` of its velocity
+across the plane each tick, `s` the slope along its travel (`travel` in `Car::step`). Up or down a
+slope of 25 degrees that is 9% less of the plane, at 40 degrees 23%; until then a car ran its
+speed across the plane, seen going faster on a slope than its speed said. In the air nothing
+changes. The shipped circuits' laps grew by a little on their steep stretches, and the drifting
+autopilot on Cascade, the mountain road, grazed a wall 4 ticks instead of 3 (the test's budget
+for a graze is 5 since).
+
+Where the road passes over itself, the slope and the height are those of the road the car is on
+(see [Tracks](tracks.md#crossings)).
+
+
 ### Walls
 
 The road is bounded by walls at half the width from the centerline — the width the road has at the

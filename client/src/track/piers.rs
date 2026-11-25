@@ -55,6 +55,9 @@ pub(super) fn piers(lit: &mut Geometry, neon: &mut Geometry, track: &Track) {
         if track.in_gap(at - clear) || track.in_gap(at) || track.in_gap(at + clear) {
             continue;
         }
+        if over_another_road(track, at, HEAD_REACH) {
+            continue;
+        }
         pier(lit, neon, track, at, HEAD_REACH, COLUMN_REACH);
     }
     // An abutment under each edge of a gap: a pier as wide as the road, its head flush with the
@@ -63,9 +66,26 @@ pub(super) fn piers(lit: &mut Geometry, neon: &mut Geometry, track: &Track) {
         for (edge, back) in [(gap.at, -1.0_f32), (gap.at + gap.length, 1.0)] {
             let at = edge + back * HEAD_LENGTH / 2.0;
             let reach = track.point_at(at).half_width + WALL_THICKNESS;
+            if over_another_road(track, at, reach) {
+                continue;
+            }
             pier(lit, neon, track, at, reach, reach * ABUTMENT_COLUMN);
         }
     }
+}
+
+/// Whether the road `at` meters along the lap passes over another stretch of itself there, within
+/// `reach` of its centerline (since v1.0.0-rc10, docs/tracks.md#crossings): a pier there would
+/// stand in the middle of the road under it, so the bridge spans it instead.
+fn over_another_road(track: &Track, at: f32, reach: f32) -> bool {
+    let point = track.point_at(at);
+    track.candidates(point.position).iter().any(|other| {
+        let along = (other.distance - at).rem_euclid(track.length());
+        let elsewhere = along.min(track.length() - along) > 4.0 * reach.max(HEAD_LENGTH);
+        elsewhere
+            && other.lateral.abs() <= track.half_width_at(other.distance) + WALL_THICKNESS + reach
+            && track.height_at(other) < point.height
+    })
 }
 
 /// The pier `at` meters along the lap: its head, the column under it down to the dark, and the band
@@ -177,6 +197,7 @@ mod tests {
                     height: 40.0,
                 },
             ],
+            widths: Vec::new(),
             narrows: Vec::new(),
             scenery: Vec::new(),
             pads: Vec::new(),

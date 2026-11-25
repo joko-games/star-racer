@@ -167,6 +167,7 @@ mod tests {
             width: 24.0,
             segments,
             elevation: Vec::new(),
+            widths: Vec::new(),
             narrows: Vec::new(),
             scenery: Vec::new(),
             pads: Vec::new(),

@@ -412,7 +412,7 @@ fn display_cars(
     // The player's own car, or the watched one, or the leader.
     let followed = own.or_else(|| spectated.0.and_then(find)).or(leader);
     let surface = |car: &Car| match &track {
-        Some(track) => track.0.surface(car.position),
+        Some(track) => track.0.surface_near(car.position, car.road),
         None => Surface {
             height: 0.0,
             gradient: Vec2::ZERO,
@@ -563,7 +563,7 @@ fn stay_on_the_road(
         // on.
         let over_gap = track
             .as_ref()
-            .is_some_and(|track| !track.0.over_road(&track.0.project(state.position)));
+            .is_some_and(|track| !track.0.over_road(&track.0.project_near(state.position, state.road)));
         let scale = if state.altitude < 0.0 || over_gap {
             0.0
         } else {

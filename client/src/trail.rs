@@ -178,7 +178,7 @@ fn lay_trails(
     let tail = |car: &Car| {
         let heading = car.body_heading();
         let position = car.position - Vec2::new(heading.cos(), heading.sin()) * TAIL;
-        let projection = track.0.project(position);
+        let projection = track.0.project_near(position, car.road);
         let on_road = car.altitude <= 0.05 && track.0.over_road(&projection);
         let height = track.0.surface_at(&projection).height + LIFT;
         let road = Vec2::new(projection.distance, projection.lateral);
