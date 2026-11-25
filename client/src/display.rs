@@ -86,6 +86,11 @@ fn apply_display_mode(
     }
     if let Ok(mut window) = windows.single_mut() {
         window.mode = wanted.window_mode();
+        // Windowed, the game opens maximized (since v1.0.0-rc16): Bevy's window of 1280 by 720
+        // and its title bar ran under the taskbar of a screen 768 high, the user's 1366 by 768.
+        if first && wanted == DisplayMode::Windowed {
+            window.set_maximized(true);
+        }
     }
 }
 

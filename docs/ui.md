@@ -179,6 +179,26 @@ in the top right corner of the first screen, the garage and the editor; at the t
 list, in the middle (on a phone, right of the title); under the lobby's name in a lobby, except
 while a race is on.
 
+## Screen sizes
+
+The interface is laid out for a window 720 high and scaled to the window's height (`ui.rs`), so a
+16:9 screen of any size shows the same layout. Since v1.0.0-rc16 it is checked at **1366 by 768**,
+the user's screen ("pense le jeu pour la résolution 1366x768, c'est la mienne"), full screen and in
+a maximized window, which leaves the game about 1366 by 705 under the title bar and above the
+taskbar. Captured there and at 1280 by 720, the first screen, the lobby list, the create dialog,
+the settings, the garage, the editor and a race. What did not fit, and what changed:
+
+- **The window**: windowed, the game opened at Bevy's 1280 by 720, which with its title bar ran
+  under the taskbar of a screen 768 high. It now opens maximized (`display.rs`), on any screen.
+- **The editor**: its panel ran past the bottom of a window 768 high, TRY, NEW and BACK out of
+  sight. The list of pieces now gives up height (at least two rows, scrolling) and the panel's gaps
+  are tighter.
+- **The garage**: its card was as tall as the window, the title cut off at the top in a maximized
+  window. Its padding, gaps, title and DONE are a little smaller on a desk.
+
+Not checked: the window opening maximized (an unattended capture asks for its own size, which no
+stored mode overrides).
+
 ## Look
 
 Dark translucent panels over the dark scene, with one neon blue accent shared with the track.

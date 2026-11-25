@@ -184,8 +184,11 @@ fn spawn_garage(
             Node {
                 width: px(pick(460.0, 400.0)),
                 flex_direction: FlexDirection::Column,
-                padding: px(pick(22.0, 10.0)).all(),
-                row_gap: px(pick(5.0, 3.0)),
+                // Tighter on a desk since v1.0.0-rc16 (22 all round, gaps of 5 before): the card was
+                // as tall as a window 720 high, the title cut off at the top in a maximized window
+                // on a 1366 by 768 screen, the user's.
+                padding: UiRect::axes(px(pick(22.0, 10.0)), px(pick(14.0, 10.0))),
+                row_gap: px(pick(4.0, 3.0)),
                 border: px(1).all(),
                 border_radius: BorderRadius::all(px(theme::RADIUS)),
                 ..default()
@@ -203,7 +206,7 @@ fn spawn_garage(
             .with_children(|title| {
                 title.spawn((
                     Text::new("GARAGE"),
-                    fonts.display(pick(40.0, 26.0)),
+                    fonts.display(pick(34.0, 26.0)),
                     TextColor(theme::TEXT),
                     TextShadow {
                         offset: Vec2::new(3.0, 3.0),
@@ -294,7 +297,7 @@ fn spawn_garage(
                 },
                 Selectable,
                 Node {
-                    padding: UiRect::axes(px(pick(12.0, 8.0)), px(pick(4.0, 2.0))),
+                    padding: UiRect::axes(px(pick(12.0, 8.0)), px(pick(3.0, 2.0))),
                     align_items: AlignItems::Center,
                     column_gap: px(8),
                     border: px(1.5).all(),
@@ -324,8 +327,8 @@ fn spawn_garage(
                         flex_grow: 1.0,
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
-                        row_gap: px(pick(5.0, 3.0)),
-                        padding: UiRect::vertical(px(pick(4.0, 2.0))),
+                        row_gap: px(pick(4.0, 3.0)),
+                        padding: UiRect::vertical(px(2)),
                         ..default()
                     })
                     .with_children(|column| {
@@ -341,7 +344,7 @@ fn spawn_garage(
                                 flex_wrap: FlexWrap::Wrap,
                                 justify_content: JustifyContent::Center,
                                 column_gap: px(pick(6.0, 4.0)),
-                                row_gap: px(pick(6.0, 4.0)),
+                                row_gap: px(pick(5.0, 4.0)),
                                 max_width: px(pick(252.0, 196.0)),
                                 ..default()
                             })
@@ -357,7 +360,7 @@ fn spawn_garage(
                                         bevy::picking::hover::Hovered::default(),
                                         Node {
                                             width: px(pick(24.0, 20.0)),
-                                            height: px(pick(24.0, 20.0)),
+                                            height: px(pick(22.0, 20.0)),
                                             border: px(2).all(),
                                             border_radius: BorderRadius::all(px(6)),
                                             ..default()
@@ -407,7 +410,7 @@ fn spawn_garage(
     commands.entity(card).with_children(|card| {
         card.spawn(button(&fonts, ButtonKind::Primary, "DONE"))
             .insert(Node {
-                height: px(pick(48.0, 38.0)),
+                height: px(pick(44.0, 38.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 border: px(1.5).all(),

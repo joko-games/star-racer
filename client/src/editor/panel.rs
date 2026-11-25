@@ -63,8 +63,8 @@ pub(super) fn spawn(mut commands: Commands, mut editor: ResMut<Editor>) {
             width: px(WIDTH),
             height: percent(100),
             flex_direction: FlexDirection::Column,
-            padding: UiRect::new(px(16), px(16), px(14), px(14)),
-            row_gap: px(8),
+            padding: UiRect::new(px(16), px(16), px(12), px(12)),
+            row_gap: px(6),
             border: UiRect::right(px(1)),
             ..default()
         },
@@ -117,8 +117,12 @@ pub(super) fn refresh(
                     flex_direction: FlexDirection::Column,
                     row_gap: px(3),
                     max_height: px(230),
+                    // It gives up height when the window is short (since v1.0.0-rc16): kept at
+                    // 230, the panel ran past the bottom of a window 768 high, TRY, NEW and
+                    // BACK out of sight. At least two rows stay.
+                    min_height: px(64),
+                    flex_shrink: 1.0,
                     overflow: Overflow::scroll_y(),
-                    flex_shrink: 0.0,
                     ..default()
                 },
             ))
