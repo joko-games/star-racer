@@ -67,7 +67,8 @@ the French will go through (`client/src/i18n.rs`, only QUICK PLAY translated yet
    site): the circuits done in v1.0.0-rc10 (docs/tracks.md#crossings, #widths, the slopes to 40
    degrees); the editor's first version in v1.0.0-rc11 (docs/editor.md): the road laid piece by piece,
    each with its width, banking and height, closed by itself, tried alone and kept locally; next,
-   what the user makes of it, and what is played on the road and the scenery.
+   what the user makes of it, and what is played on the road and the scenery. And the Knot, a short
+   circuit showing all of it, in v1.0.0-rc12 (docs/tracks.md#the-knot).
 
 Also waiting:
 

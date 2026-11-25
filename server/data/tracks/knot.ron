@@ -1,0 +1,77 @@
+// The Knot (v1.0.0-rc12): a short circuit, 2.26 km round, made to show what a circuit may do
+// since v1.0.0-rc10 (docs/tracks.md#the-knot), at the user's word on 2026-11-25: "Fais un nouveau
+// niveau court qui illustre tout ca". Laid piece by piece with the level editor's own model, which
+// closed it.
+//
+//   the line            320 m east out of the line, 32 m wide, at the foot of the knot
+//   the climb           a left of 225 degrees, radius 50, banked 14 degrees, climbing 20 m
+//   the ramp            up another 10 m as the road narrows to 22 m
+//   the bridge          480 m at 30 m up, 22 m wide, flying over the straight out of the line
+//                       and over the run home below it: two crossings, 30 m of air under each
+//   the drop            80 m falling 28 m, close to the steepest a road may (40 degrees)
+//   the plaza           the road opening out to 46 m at the foot of the drop
+//   the hairpin         a left of 207 degrees, radius 55, the place to drift
+//   the run home        580 m back under the bridge, and a right of 72 degrees onto the line
+//
+// The way home was found by the editor (editing::closing, radius 55), so its turns have no
+// transition. The format is described in docs/tracks.md.
+(
+    name: "The Knot",
+    width: 32.0,
+    segments: [
+        // The line.
+        Straight(length: 320.0),
+        // The climb.
+        Turn(angle: 225.0, radius: 50.0, transition: 39.26991, banking: 14.0),
+        // The ramp, the bridge, the drop and the plaza.
+        Straight(length: 180.0),
+        Straight(length: 480.0),
+        Straight(length: 80.0),
+        Straight(length: 120.0),
+        // The hairpin, the run home and the turn onto the line.
+        Turn(angle: 207.40482, radius: 55.0),
+        Straight(length: 578.5996),
+        Turn(angle: -72.404816, radius: 55.0),
+    ],
+    // The bridge 30 m up over the line and the run home; the drop from it.
+    elevation: [
+        (at: 0.0, height: 0.0),
+        (at: 320.0, height: 0.0),
+        (at: 555.61945, height: 20.0),
+        (at: 735.61945, height: 30.0),
+        (at: 1215.6194, height: 30.0),
+        (at: 1295.6194, height: 2.0),
+        (at: 1415.6194, height: 0.0),
+    ],
+    // 32 m out of the line, 22 m over the bridge, 46 m on the plaza, and back to 32.
+    widths: [
+        (at: 0.0, width: 32.0, blend: 0.0),
+        (at: 555.61945, width: 22.0),
+        (at: 1215.6194, width: 30.0),
+        (at: 1295.6194, width: 46.0),
+        (at: 1415.6194, width: 32.0),
+    ],
+    // One gate up on the climb, one on the plaza.
+    checkpoints: [600.0, 1340.0],
+    scenery: [
+        // The line under its gantry, between two stands.
+        Gantry(at: 0.0),
+        Grandstand(at: 40.0, side: Left, offset: 4.0, length: 90.0),
+        Grandstand(at: 40.0, side: Right, offset: 4.0, length: 90.0),
+        Skyline(at: 140.0, side: Right, offset: 10.0, length: 160.0, depth: 70.0, height: 38.0),
+        // Into the climb.
+        Chevrons(at: 300.0, side: Left),
+        Tower(at: 440.0, side: Left, offset: 14.0, height: 60.0, width: 24.0, depth: 24.0),
+        // Onto the bridge between two pylons (its far end comes down over the run home, where none
+        // can stand).
+        Pylon(at: 740.0, side: Left, offset: 1.0, height: 22.0),
+        Pylon(at: 740.0, side: Right, offset: 1.0, height: 22.0),
+        // The drop and the plaza.
+        Billboard(at: 1300.0, side: Right, offset: 3.0),
+        Chevrons(at: 1400.0, side: Right),
+        Skyline(at: 1430.0, side: Right, offset: 10.0, length: 200.0, depth: 80.0, height: 44.0),
+        // The run home, the city on its right.
+        Skyline(at: 1800.0, side: Right, offset: 10.0, length: 240.0, depth: 90.0, height: 40.0),
+        Monolith(at: 2100.0, side: Left, offset: 40.0, height: 70.0, width: 14.0),
+    ],
+)

@@ -8,7 +8,8 @@ Track files live in `server/data/tracks/`, one per track, named by its key: the 
 all, and the player who creates a lobby picks one; quick play and ranked take them in turn. Since
 v0.1.50 the game ships [the Odyssey](#the-odyssey), which replaced the skyway and the
 rift at the user's word ("tu vas supprimer les niveaux déjà fait et en faire un long et riche, en
-pensant checkpoints ET shortcuts à découvrir"), and since v0.1.4 [Cascade](#cascade) beside it. Clients receive every track when they connect (see
+pensant checkpoints ET shortcuts à découvrir"), since v0.1.4 [Cascade](#cascade) beside it, and since
+v1.0.0-rc12 [the Knot](#the-knot), a short one. Clients receive every track when they connect (see
 [Protocol](protocol.md#tracks)). Every shipped track is tested: it must load, and the autopilot
 must lap it drifting without touching a wall, faster than gripping (see
 [Simulation](simulation.md#autopilot)).
@@ -138,6 +139,29 @@ placed from those names, so it follows when the road before it changes; the two 
 the lap along its own heading; it writes the track file, draws the plan colored by height and the
 profile, drives the autopilot round in every style and with every personality, and lists where a
 lap touches a wall.
+
+## The Knot
+
+Since v1.0.0-rc12 (2026-11-25), at the user's word "Fais un nouveau niveau court qui illustre tout
+ca": a short circuit, 2.26 km round, made to show what a circuit may do since v1.0.0-rc10. It was
+laid piece by piece with the level editor's own model (`client/src/editor/model.rs`), which closed
+it, then written out by hand with its scenery (`server/data/tracks/knot.ron`).
+
+| Stretch | What it shows |
+| --- | --- |
+| the line | 320 m east, 32 m wide, between two stands under the gantry |
+| the climb | a left of 225 degrees, radius 50, banked 14 degrees, climbing 20 m |
+| the ramp | up another 10 m as the road narrows to 22 m ([Widths](#widths)) |
+| the bridge | 480 m at 30 m up, crossing over the straight out of the line and over the run home ([Crossings](#crossings)) |
+| the drop | 80 m falling 28 m, close to the steepest a road may |
+| the plaza | the road opening out to 46 m at the foot of the drop |
+| the hairpin | a left of 207 degrees, radius 55, where the drift pays |
+| the run home | 580 m back under the bridge, then a right of 72 degrees onto the line |
+
+Two checkpoints, on the climb (600 m) and on the plaza (1340 m). The bridge's far end comes down
+over the run home, so no pylon stands there; its piers stand clear of both roads under it. The
+autopilot laps it gripping in 39.7 s and drifting in 38.4 s, without a wall or a fall, late
+included.
 
 ## The circuits before it
 
